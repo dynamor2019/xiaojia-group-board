@@ -1,0 +1,24 @@
+{
+  "days": 30,
+  "qq": {
+    "enabled": true,
+    "uin": "",
+    "napcat_dir": "",
+    "ws_port": 8765,
+    "pages": 15
+  },
+  "wechat": {
+    "enabled": true,
+    "db_dir": "",
+    "process": "Weixin.exe",
+    "exit_after_crawl": false
+  },
+  "board": {
+    "port": 8766,
+    "open_browser": true
+  },
+  "paths": {
+    "data_dir": "",
+    "work_dir": ""
+  }
+}

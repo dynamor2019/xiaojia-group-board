@@ -1,0 +1,34 @@
+# ------- 个人配置 -------
+config.json
+
+# ------- 抓取结果与看板 -------
+board_state.json
+data_store.json
+群公告_*.json
+群公告_*.md
+微信群公告_*.json
+微信群公告_*.md
+待办提醒_*.md
+小贾AI群看板.html
+demo/看板预览.html
+
+# 示例数据要进仓库（上面的规则会误伤，这里放行）
+!demo/群公告_示例.json
+!demo/微信群公告_示例.json
+
+# ------- 解密中间产物：含全部聊天记录，绝不能提交 -------
+vendor/wcdb-key-tool/all_keys.json
+decrypted/
+*_plain/
+*.db-wal
+*.db-shm
+
+# ------- 其他 -------
+__pycache__/
+*.py[cod]
+logs/
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
