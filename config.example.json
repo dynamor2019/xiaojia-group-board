@@ -4,6 +4,7 @@
     "enabled": true,
     "uin": "",
     "napcat_dir": "",
+    "exe": "",
     "ws_port": 8765,
     "pages": 15
   },

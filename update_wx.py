@@ -62,7 +62,7 @@ def decrypt_ok() -> bool:
     return probe.exists() and bool(msgs)
 
 
-def step_extract(force: bool = False) -> bool:
+def step_extract(db_dir: Path, force: bool = False) -> bool:
     if KEYS.exists() and not force:
         log("[1/4] 已有密钥文件，直接沿用")
         return True
@@ -70,7 +70,8 @@ def step_extract(force: bool = False) -> bool:
         log("[1/4] 微信未运行 —— 但有旧密钥时仍可离线解密")
         return KEYS.exists()
     log("[1/4] 从微信进程内存提取密钥（只读扫描，不注入）…")
-    code, out = run_tool(["extract", "--db-dir", str(DB_DIR), "--output", str(KEYS)])
+    KEYS.parent.mkdir(parents=True, exist_ok=True)
+    code, out = run_tool(["extract", "--db-dir", str(db_dir), "--output", str(KEYS)])
     tail = [ln for ln in out.strip().splitlines() if ln.strip()][-3:]
     for ln in tail:
         log("      " + ln.strip())
@@ -81,11 +82,11 @@ def step_extract(force: bool = False) -> bool:
     return True
 
 
-def step_decrypt(force: bool = False) -> int:
+def step_decrypt(db_dir: Path, force: bool = False) -> int:
     """每次都重解（只 7 秒），否则定时任务刷不到新消息。返回成功解开的库数。"""
     log("[2/4] 解密数据库…")
     code, out = run_tool(
-        ["decrypt", "--db-dir", str(DB_DIR), "--keys", str(KEYS), "--output", str(PLAIN)]
+        ["decrypt", "--db-dir", str(db_dir), "--keys", str(KEYS), "--output", str(PLAIN)]
     )
     ok_n = 0
     for ln in out.strip().splitlines():
@@ -167,14 +168,14 @@ def main() -> int:
             log("[错误] 还没有解密产物，去掉 --crawl-only 重跑")
             return 2
     else:
-        if not step_extract(force=a.force):
+        if not step_extract(DB_DIR, force=a.force):
             return 3
-        n = step_decrypt()
+        n = step_decrypt(DB_DIR)
         if n == 0 and not a.force:
             log("[2/4] 一个库都没解开，密钥可能已失效（换账号/重建库），重新提取…")
-            if not step_extract(force=True):
+            if not step_extract(DB_DIR, force=True):
                 return 3
-            n = step_decrypt()
+            n = step_decrypt(DB_DIR)
         if n == 0:
             return 3
 

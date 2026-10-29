@@ -161,6 +161,7 @@ pip install -r requirements.txt
 | `qq.enabled` | `true` | 关掉就完全不动 QQ |
 | `qq.uin` | `""` | QQ 号。不填就只能手动开 QQ 再抓 |
 | `qq.napcat_dir` | `""` | NapCat 目录，留空用项目下的 `napcat\` |
+| `qq.exe` | `""` | `QQ.exe` 路径，留空自动找常见安装位置 |
 | `qq.ws_port` | `8765` | OneBot 反向 WS 端口 |
 | `qq.pages` | `15` | 每个群最多翻几页（每页 100 条） |
 | `wechat.enabled` | `true` | 关掉就完全不动微信 |

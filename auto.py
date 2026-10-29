@@ -36,7 +36,8 @@ BASE = Path(__file__).resolve().parent
 NAPCAT = settings.napcat_dir()
 LOGDIR = BASE / "logs"
 PY = sys.executable
-QQ_EXE = r"C:\Program Files\Tencent\QQNT\QQ.exe"
+QQ_EXE = settings.qq_exe()
+
 UIN = str(settings.get("qq", "uin") or "").strip()
 WS_HOST, WS_PORT = "127.0.0.1", int(settings.get("qq", "ws_port", 8765))
 

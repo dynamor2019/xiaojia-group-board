@@ -22,6 +22,7 @@ DEFAULTS: dict = {
         "enabled": True,
         "uin": "",                   # 你的 QQ 号，quick 登录用
         "napcat_dir": "",            # NapCat 解压目录；留空则用上一级的 napcat/
+        "exe": "",                   # QQ.exe 路径；留空自动找常见位置
         "ws_port": 8765,             # OneBot 反向 WS 端口（本机）
         "pages": 15,                 # 每个群最多翻几页
     },
@@ -100,6 +101,21 @@ def napcat_dir() -> Path:
     if p:
         return Path(p).expanduser()
     return BASE / "napcat"
+
+
+def qq_exe() -> str:
+    """QQ 主程序路径：config 优先，否则找几个常见安装位置。"""
+    p = (get("qq", "exe") or "").strip()
+    if p and Path(p).exists():
+        return p
+    for cand in (
+        r"C:\Program Files\Tencent\QQNT\QQ.exe",
+        r"C:\Program Files (x86)\Tencent\QQNT\QQ.exe",
+        str(Path.home() / "AppData/Local/Programs/Tencent/QQNT/QQ.exe"),
+    ):
+        if Path(cand).exists():
+            return cand
+    return r"C:\Program Files\Tencent\QQNT\QQ.exe"
 
 
 def data_dir() -> Path:
