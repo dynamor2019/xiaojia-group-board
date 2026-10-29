@@ -87,7 +87,7 @@ NapCat 只能注入**新创建**的进程，所以每天跑的时候先拉起一
 **环境**：Windows 10/11 + Python 3.10 及以上（装的时候记得勾 `Add python.exe to PATH`）
 
 ```bat
-git clone https://github.com/<your-name>/xiaojia-group-board.git
+git clone https://github.com/dynamor2019/xiaojia-group-board.git
 cd xiaojia-group-board
 pip install -r requirements.txt
 ```
