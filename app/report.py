@@ -32,7 +32,7 @@ SRC = DATA / "群公告_最新.json"      # 兜底名，正常会由 pick_src() 
 OUT = settings.board_file()
 
 
-ASSETS = BASE / "assets"
+ASSETS = settings.assets_dir()
 BRAND = "小贾AI群看板"
 TAGLINE = "QQ · 微信 双通道 @所有人 汇总"
 
@@ -168,6 +168,43 @@ label.chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:va
 .saver{font-size:11.5px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);
        color:var(--tx2);background:#fafbfc}
 .saver.ok{color:#166534;background:#f0fdf4;border-color:#bbf7d0}
+
+/* ---- 顶部动作按钮 ---- */
+.acts{margin-left:auto;display:flex;gap:8px;align-items:center;flex:none}
+.btn-act{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:9px;
+  border:1px solid var(--line);background:#fff;color:var(--tx);font-size:13px;
+  font-family:inherit;cursor:pointer;white-space:nowrap;transition:.15s}
+.btn-act:hover{border-color:#b9e6d4;background:#f7fdfb}
+.btn-act.primary{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+.btn-act.primary:hover{background:#0c8a61;border-color:#0c8a61}
+.btn-act:disabled{opacity:.65;cursor:default}
+.btn-act .spin{width:12px;height:12px;border:2px solid rgba(255,255,255,.45);
+  border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* ---- 底部控制台 ---- */
+.console{position:fixed;right:16px;bottom:16px;width:min(640px,calc(100vw - 32px));
+  max-height:46vh;background:#0f172a;color:#d7e2f0;border-radius:12px;z-index:60;
+  box-shadow:0 18px 48px rgba(15,23,42,.34);display:none;flex-direction:column;overflow:hidden}
+.console.show{display:flex}
+.console .ch{display:flex;align-items:center;gap:8px;padding:9px 13px;background:#16233c;
+  font-size:12.5px;font-weight:600;color:#e8eef8}
+.console .ch .dot{width:7px;height:7px;border-radius:50%;background:#22c55e;flex:none}
+.console .ch .dot.run{background:#f59e0b;animation:bl 1s infinite}
+@keyframes bl{50%{opacity:.35}}
+.console .ch .x{margin-left:auto;cursor:pointer;color:#8fa3bf;font-size:15px;line-height:1}
+.console .ch .x:hover{color:#fff}
+.console .cbody{padding:10px 13px;overflow:auto;
+  font:12px/1.6 ui-monospace,Consolas,"Courier New",monospace;
+  white-space:pre-wrap;word-break:break-all}
+.console .cbody span{display:block}
+
+/* ---- 演示横幅 ---- */
+.demobar{background:#fef3c7;border-bottom:1px solid #fde68a;color:#92400e;
+  font-size:12.5px;padding:7px 26px;display:flex;gap:10px;align-items:center}
+.demobar b{font-weight:650}
+.demobar a{margin-left:auto;color:#92400e;font-weight:600;text-decoration:none}
+.demobar a:hover{text-decoration:underline}
 .saver.bad{color:#92400e;background:#fffbeb;border-color:#fcd34d}
 
 /* —— 两列 —— */
@@ -268,12 +305,18 @@ mark{background:#fff3a3;padding:0 1px;border-radius:2px}
   .gmeta{display:none}
 }
 </style></head><body>
+%%DEMOBAR%%
 <header>
   <div class="brand">
     <img src="%%LOGO%%" alt="小贾">
     <div class="tt">
       <h1>%%BRAND%%<span class="tag">QQ · 微信</span></h1>
       <div class="sub">抓取时间 %%NOW%% ｜ 只显示最近 <b>%%DAYS%%</b> 天的、未过期的 ｜ %%DROPPED%%</div>
+    </div>
+    <div class="acts" id="acts">
+      <button class="btn-act primary" id="btnRefresh">↻ 刷新数据</button>
+      <button class="btn-act" id="btnDoctor">环境体检</button>
+      <button class="btn-act" id="btnDemo">看示例</button>
     </div>
   </div>
   <div class="stats">
@@ -315,10 +358,17 @@ mark{background:#fff3a3;padding:0 1px;border-radius:2px}
     </section>
   </div>
 </main>
+
+<div class="console" id="console">
+  <div class="ch"><span class="dot" id="cDot"></span><span id="cTitle">输出</span>
+    <span class="x" id="cClose">✕</span></div>
+  <div class="cbody" id="cBody"></div>
+</div>
 <script>
 const DATA = %%DATA%%;
 const GROUPS = %%GROUPSJSON%%;
 const SERVED = %%SERVED%%;
+const DEMO = %%DEMO%%;
 const KEY = 'qq_at_done_v3';
 const CKEY = 'qad3';
 
@@ -501,7 +551,11 @@ function renderCol(src, qs, gv, ot, hd) {
     soon.length ? soon.map(cardHTML).join('') : '';
   document.getElementById('list' + sfx).innerHTML = order.length
     ? order.map(g => groupHTML(g, buckets.get(g), qs)).join('')
-    : '<div class="col-none">没有匹配的记录</div>';
+    : '<div class="col-none">' + (
+        DATA.length ? '没有匹配的记录'
+        : (SERVED ? '还没有数据 —— 点右上角「刷新数据」抓一次'
+                  : '还没有数据 —— 双击「启动看板.cmd」后点「刷新数据」')
+      ) + '</div>';
 
   const nEl = document.getElementById('n' + sfx);
   nEl.textContent = rows.length + ' 条 · ' + order.length + ' 群' +
@@ -557,12 +611,125 @@ onlyTodo.addEventListener('change', render);
 hideDone.addEventListener('change', render);
 renderMuted();
 render();
+
+// ================= 服务端动作：刷新 / 体检 / 安装依赖 =================
+const btnRefresh = document.getElementById('btnRefresh');
+const btnDoctor = document.getElementById('btnDoctor');
+const btnDemo = document.getElementById('btnDemo');
+const acts = document.getElementById('acts');
+const con = document.getElementById('console');
+const cBody = document.getElementById('cBody');
+const cDot = document.getElementById('cDot');
+const cTitle = document.getElementById('cTitle');
+document.getElementById('cClose').onclick = () => con.classList.remove('show');
+
+let pollTimer = null;
+
+function conShow(title, running) {
+  cTitle.textContent = title;
+  cDot.className = 'dot' + (running ? ' run' : '');
+  con.classList.add('show');
+}
+function conClear() { cBody.textContent = ''; }
+function conLine(text, color) {
+  const sp = document.createElement('span');
+  sp.textContent = text;
+  if (color) sp.style.color = color;
+  cBody.appendChild(sp);
+  cBody.scrollTop = cBody.scrollHeight;
+  return sp;
+}
+
+function pollRefresh() {
+  fetch('/api/refresh').then(r => r.json()).then(s => {
+    conClear();
+    s.lines.forEach(l => {
+      let c = '';
+      if (l.indexOf('返回') >= 0 || l.indexOf('出错') >= 0 || l.indexOf('失败') >= 0) c = '#fca5a5';
+      else if (l.indexOf('完成') >= 0 || l.indexOf('OK') >= 0) c = '#86efac';
+      else if (l.indexOf('──') >= 0) c = '#93c5fd';
+      conLine(l, c);
+    });
+    if (s.running) {
+      conShow('刷新中… ' + s.elapsed + ' 秒', true);
+      return;
+    }
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    btnRefresh.disabled = false;
+    btnRefresh.textContent = '↻ 刷新数据';
+    if (s.rc === 0) {
+      conShow('刷新完成，正在重载看板…', false);
+      setTimeout(() => location.reload(), 1100);
+    } else {
+      conShow('刷新结束，有报错（见上）', false);
+    }
+  }).catch(() => {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  });
+}
+
+btnRefresh.onclick = () => {
+  btnRefresh.disabled = true;
+  btnRefresh.textContent = '刷新中…';
+  conClear();
+  conShow('准备刷新…', true);
+  fetch('/api/refresh', { method: 'POST' }).then(r => r.json()).then(x => {
+    if (!x.ok) conLine('已经有一个刷新在跑了，等它结束。', '#fcd34d');
+    pollRefresh();
+    pollTimer = setInterval(pollRefresh, 800);
+  });
+};
+
+function renderDoctor(d) {
+  conClear();
+  d.checks.forEach(c => {
+    const mark = c.ok ? '✓ ' : (c.level === 'fail' ? '✕ ' : '! ');
+    conLine(mark + c.name + '　' + c.detail,
+            c.ok ? '#86efac' : (c.level === 'fail' ? '#fca5a5' : '#fcd34d'));
+  });
+  if (!d.ok) {
+    const sp = conLine('→ 点这里安装 / 修复依赖', '#7dd3fc');
+    sp.style.cursor = 'pointer';
+    sp.style.textDecoration = 'underline';
+    sp.onclick = () => {
+      sp.textContent = '正在安装，请稍候…';
+      fetch('/api/install', { method: 'POST' }).then(r => r.json()).then(x => {
+        sp.textContent = x.ok ? '安装完成，再点「环境体检」复查一次' : '安装失败，输出见下';
+        if (x.output) conLine(x.output, '#94a3b8');
+      });
+    };
+  }
+  conShow(d.ok ? '体检通过' : ('有 ' + d.fails + ' 项待处理'), false);
+}
+
+btnDoctor.onclick = () => {
+  conShow('体检中…', true);
+  fetch('/api/doctor').then(r => r.json()).then(renderDoctor)
+    .catch(() => conShow('体检接口不可用（是不是直接双击打开了 html？）', false));
+};
+
+if (DEMO) {
+  btnDemo.textContent = '退出示例';
+  btnDemo.onclick = () => { location.href = '/'; };
+} else {
+  btnDemo.onclick = () => { location.href = '/?demo=1'; };
+}
+
+if (!SERVED) {
+  acts.style.display = 'none';
+} else {
+  // 第一次打开先自查一遍，有问题直接把面板弹出来
+  fetch('/api/doctor').then(r => r.json()).then(d => {
+    if (!d.ok) renderDoctor(d);
+  }).catch(() => {});
+}
 </script>
 </body></html>"""
 
 
 # --------------------------------------------------------------------------- 组装
-def build(today: date, days: int = 30, sources=None, served: bool = False) -> str:
+def build(today: date, days: int = 30, sources=None,
+          served: bool = False, demo: bool = False) -> str:
     rows = collect(today, days, sources)
     n_old, n_exp = getattr(collect, "dropped", (0, 0))
     groups: dict[str, dict] = {}
@@ -596,6 +763,11 @@ def build(today: date, days: int = 30, sources=None, served: bool = False) -> st
         "%%DONE%%": json.dumps(st.get("done") or [], ensure_ascii=False, separators=(",", ":")),
         "%%MUTED%%": json.dumps(st.get("muted") or [], ensure_ascii=False, separators=(",", ":")),
         "%%SERVED%%": "true" if served else "false",
+        "%%DEMO%%": "true" if demo else "false",
+        "%%DEMOBAR%%": (
+            '<div class="demobar"><b>示例模式</b>　现在显示的是 demo/ 里的假数据，'
+            '不会动你的真实群。<a href="/">回到我的看板 →</a></div>'
+        ) if demo else "",
     }
     out = TPL
     for k, v in subs.items():

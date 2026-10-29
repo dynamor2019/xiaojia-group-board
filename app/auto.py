@@ -34,7 +34,7 @@ import settings
 
 BASE = Path(__file__).resolve().parent
 NAPCAT = settings.napcat_dir()
-LOGDIR = BASE / "logs"
+LOGDIR = settings.data_dir() / "logs"
 PY = sys.executable
 QQ_EXE = settings.qq_exe()
 
@@ -290,7 +290,8 @@ def main() -> int:
             log("      处理：手动关掉 QQ 再重开；或看板群里的说明。")
         else:
             log("[1/4] QQ 在跑但不是 NapCat 模式，跳过（不干扰你正在用的 QQ）")
-        return 4
+            log("      想让 QQ 也刷新：退出 QQ，再点一次刷新。")
+        return 0            # 主动跳过不算失败
     elif a.start:
         if not UIN:
             log("[1/4] 还没配置 QQ 号，无法快速登录。")
@@ -304,7 +305,7 @@ def main() -> int:
         time.sleep(8)
     else:
         log("[1/4] QQ 没在跑，且未指定 --start，跳过")
-        return 5
+        return 0            # 没让启动就是跳过，同样不算失败
 
     ok = run([PY, "-E", "-X", "utf8", "crawl_ws.py",
               "--days", str(a.days), "--pages", str(a.pages)],

@@ -1,27 +1,33 @@
 # -*- coding: utf-8 -*-
-"""统一配置入口 —— 所有人都只需要改 config.json，不用动代码。
+"""统一配置 —— 所有人只需要改根目录的 config.json，不用动代码。
 
-首次运行时如果找不到 config.json，会从 config.example.json 复制一份出来并提示修改。
+目录约定
+--------
+    <项目根>/            启动看板.cmd、README、config.json、看板 html
+    <项目根>/app/        全部代码（这个文件所在）
+    <项目根>/data/       抓取结果、状态、日志
+    <项目根>/assets/     logo、截图
+    <项目根>/demo/       示例数据
 
-优先级：config.json 里的值 > 自动探测 > 内置默认值。
+优先级：config.json > 自动探测 > 内置默认值。
 """
 from __future__ import annotations
 
 import copy
 import json
-import sys
 from pathlib import Path
 
-BASE = Path(__file__).resolve().parent
-CONFIG_FILE = BASE / "config.json"
-EXAMPLE_FILE = BASE / "config.example.json"
+APP_DIR = Path(__file__).resolve().parent          # .../app
+ROOT = APP_DIR.parent                              # 项目根
+CONFIG_FILE = ROOT / "config.json"
+EXAMPLE_FILE = APP_DIR / "config.example.json"
 
 DEFAULTS: dict = {
     "days": 30,                      # 只看最近多少天
     "qq": {
         "enabled": True,
-        "uin": "",                   # 你的 QQ 号，quick 登录用
-        "napcat_dir": "",            # NapCat 解压目录；留空则用上一级的 napcat/
+        "uin": "",                   # 你的 QQ 号，快速登录用
+        "napcat_dir": "",            # NapCat 解压目录；留空则用根目录下的 napcat/
         "exe": "",                   # QQ.exe 路径；留空自动找常见位置
         "ws_port": 8765,             # OneBot 反向 WS 端口（本机）
         "pages": 15,                 # 每个群最多翻几页
@@ -37,8 +43,8 @@ DEFAULTS: dict = {
         "open_browser": True,
     },
     "paths": {
-        "data_dir": "",              # 抓取结果放哪；留空=脚本目录
-        "work_dir": "",              # 解密中间产物放哪；留空=vendor/wcdb-key-tool
+        "data_dir": "",              # 抓取结果放哪；留空=data/
+        "work_dir": "",              # 解密中间产物放哪；留空=app/vendor/wcdb-key-tool/
     },
 }
 
@@ -83,28 +89,63 @@ def load(reload: bool = False, quiet: bool = True) -> dict:
     return _cache
 
 
-def get(section: str, key: str, default=None):
-    return (load().get(section) or {}).get(key, default)
+def get(section_name: str, key: str, default=None):
+    return (load().get(section_name) or {}).get(key, default)
+
+
+def section(name: str) -> dict:
+    return load().get(name) or {}
 
 
 def days() -> int:
     return int(load().get("days") or 30)
 
 
+# ------------------------------------------------------------------ 路径
+def root() -> Path:
+    return ROOT
+
+
 def base_dir() -> Path:
-    return BASE
+    """兼容旧调用：代码目录。"""
+    return APP_DIR
+
+
+def data_dir() -> Path:
+    """抓取结果、状态、日志。"""
+    p = (get("paths", "data_dir") or "").strip()
+    d = Path(p).expanduser() if p else ROOT / "data"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def work_dir() -> Path:
+    """解密中间产物（密钥、明文库）。"""
+    p = (get("paths", "work_dir") or "").strip()
+    return Path(p).expanduser() if p else APP_DIR / "vendor" / "wcdb-key-tool"
+
+
+def assets_dir() -> Path:
+    return ROOT / "assets"
+
+
+def demo_dir() -> Path:
+    return ROOT / "demo"
+
+
+def board_file() -> Path:
+    """看板 HTML 落在根目录，方便直接双击打开。"""
+    return ROOT / "小贾AI群看板.html"
 
 
 def napcat_dir() -> Path:
-    """NapCat 目录：config 里优先，否则找同级的 napcat/。"""
     p = (get("qq", "napcat_dir") or "").strip()
     if p:
         return Path(p).expanduser()
-    return BASE / "napcat"
+    return ROOT / "napcat"
 
 
 def qq_exe() -> str:
-    """QQ 主程序路径：config 优先，否则找几个常见安装位置。"""
     p = (get("qq", "exe") or "").strip()
     if p and Path(p).exists():
         return p
@@ -118,25 +159,9 @@ def qq_exe() -> str:
     return r"C:\Program Files\Tencent\QQNT\QQ.exe"
 
 
-def data_dir() -> Path:
-    """抓取结果（群公告_*.json / 看板 html）存放目录。"""
-    p = (get("paths", "data_dir") or "").strip()
-    return Path(p).expanduser() if p else BASE
-
-
-def board_file() -> Path:
-    """看板 HTML 的落盘路径（与 data_dir 保持一致）。"""
-    return data_dir() / "小贾AI群看板.html"
-
-
-def work_dir() -> Path:
-    """解密中间产物（密钥、明文库）存放目录。"""
-    p = (get("paths", "work_dir") or "").strip()
-    return Path(p).expanduser() if p else BASE / "vendor" / "wcdb-key-tool"
-
-
+# ------------------------------------------------------------ 微信目录探测
 def wechat_db_dir() -> Path | None:
-    """微信数据目录：config 优先，否则自动探测 xwechat_files/<账号>/db_storage。"""
+    """config 优先，否则自动探测 xwechat_files/<账号>/db_storage。"""
     p = (get("wechat", "db_dir") or "").strip()
     if p:
         d = Path(p).expanduser()
@@ -145,7 +170,7 @@ def wechat_db_dir() -> Path | None:
 
 
 def _wx_data_root() -> Path | None:
-    """微信把数据根目录记在 %APPDATA%\\Tencent\\xwechat\\config\\*.ini 里（内容就是一行路径）。"""
+    """微信把数据根目录记在 %APPDATA%\\Tencent\\xwechat\\config\\*.ini（内容就是一行路径）。"""
     cfg = Path.home() / "AppData" / "Roaming" / "Tencent" / "xwechat" / "config"
     if not cfg.exists():
         return None
@@ -162,9 +187,9 @@ def _wx_data_root() -> Path | None:
 def detect_db_dir() -> Path | None:
     """挑最近还在写入的那个账号的 db_storage（多账号/换号时不会认错）。"""
     candidates: list[Path] = []
-    root = _wx_data_root()
-    if root:
-        candidates = list(root.glob("xwechat_files/*/db_storage"))
+    wx_root = _wx_data_root()
+    if wx_root:
+        candidates = list(wx_root.glob("xwechat_files/*/db_storage"))
     if not candidates:
         for base in (Path.home() / "xwechat_files",
                      Path.home() / "Documents" / "xwechat_files"):
@@ -185,10 +210,9 @@ def detect_db_dir() -> Path | None:
     return best
 
 
-def section(name: str) -> dict:
-    return load().get(name) or {}
-
-
 if __name__ == "__main__":
     ensure_config()
     print(json.dumps(load(), ensure_ascii=False, indent=2))
+    print("data_dir:", data_dir())
+    print("work_dir:", work_dir())
+    print("board   :", board_file())

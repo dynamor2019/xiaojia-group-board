@@ -10,7 +10,7 @@ if not defined PY (
 )
 if not defined PY goto NOPY
 
-%PY% -X utf8 launch.py board
+%PY% -X utf8 "app\launch.py"
 if errorlevel 1 pause
 exit /b 0
 

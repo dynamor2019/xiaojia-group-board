@@ -67,7 +67,7 @@ NapCat 只能注入**新创建**的进程，所以每天跑的时候先拉起一
 
 密钥提取这部分没有自己造轮子，直接用了
 [wcdb-key-tool](https://github.com/TANGandXUE/wcdb-key-tool)（MIT），
-它解决了微信 4.1+ 不再缓存明文密钥的问题。代码已 vendor 到 `vendor/wcdb-key-tool/`。
+它解决了微信 4.1+ 不再缓存明文密钥的问题。代码已 vendor 到 `app/vendor/wcdb-key-tool/`。
 
 ### 两个通道的差异，一张表
 
@@ -91,67 +91,39 @@ NapCat 只能注入**新创建**的进程，所以每天跑的时候先拉起一
 ```bat
 git clone https://github.com/dynamor2019/xiaojia-group-board.git
 cd xiaojia-group-board
-pip install -r requirements.txt
 ```
 
-### 第 0 步：先看看长什么样（不需要任何配置）
+然后**双击根目录的 `启动看板.cmd`** —— 就这一个入口，其余全在网页里。
 
-```bat
-看演示.cmd
-```
+第一次启动会自动做三件事：
 
-会用 `demo/` 里的假数据生成一份看板并打开。确认样式你满意，再往下走。
+1. 没有 `config.json` 就生成一份（想改参数编辑它就行）
+2. 缺 Python 依赖就自动 `pip install`（只有一个 `websockets`）
+3. 拉起看板服务并打开浏览器
 
-### 第 1 步：配置
+打开后右上角有三个按钮：
 
-```bat
-首次配置.cmd
-```
+| 按钮 | 作用 |
+|---|---|
+| **↻ 刷新数据** | 立刻抓一次（微信 + QQ），日志实时滚在下方黑框里，完事自动重载看板 |
+| **环境体检** | 逐项检查 Python / 依赖 / NapCat / QQ 号 / 微信数据目录 / 密钥，红的点一下就能装依赖 |
+| **看示例** | 切到 `demo/` 的假数据看效果，不动你的真实群 |
 
-会生成 `config.json` 并帮你打开。至少要填 **QQ 号**：
+### 想配 QQ 的话，还差一步
 
-```json
-{
-  "qq": { "uin": "你的QQ号" },
-  "wechat": { "db_dir": "" }
-}
-```
+**微信侧开箱即用**（目录自动探测），不用任何额外准备。
 
-`wechat.db_dir` 留空即可 —— 会自动去 `%APPDATA%\Tencent\xwechat\config\*.ini`
-里找微信的数据根目录，再挑最近还在写入的那个账号。
+QQ 侧需要 [NapCat](https://github.com/NapNeko/NapCatQQ/releases)：
 
-### 第 2 步：装 NapCat（只抓 QQ 才需要）
+1. 下载 Windows 版，解压到项目下的 `napcat\`（或把 `qq.napcat_dir` 指到你放的位置）
+2. 在 `config.json` 里填上 `qq.uin`
+3. 点「环境体检」确认 NapCat 那项变绿
 
-1. 到 [NapCatQQ Releases](https://github.com/NapNeko/NapCatQQ/releases) 下载 Windows 版
-2. 解压到项目下的 `napcat\` 目录（或者把 `qq.napcat_dir` 指到你放的位置）
-3. 确保微信/QQ 都装好并**登录过一次**
+> 不想碰 QQ 就把 `config.json` 里的 `qq.enabled` 改成 `false`，只当微信看板用，一样好用。
 
-### 第 3 步：体检
-
-```bat
-体检.cmd
-```
-
-会逐项检查 Python 版本、依赖、配置、NapCat 路径、微信数据目录、消息库数量。
-标 `×` 的按提示补上即可。
-
-### 第 4 步：跑
-
-```bat
-更新一次.cmd
-```
-
-跑完会告诉你看板落在哪。然后：
-
-```bat
-启动看板.cmd
-```
-
-打开带交互的版本（能记住「已完成」、能「取消关注」群）。
-
-> 为什么看板要起个小服务？因为浏览器不允许网页直接写磁盘文件，
-> 而「取消关注」必须落进 `board_state.json`，爬虫下次才知道要跳过它。
-> 这个服务只用 Python 标准库，跑在 `127.0.0.1:8766`，只监听本机。
+> **为什么一个"看板"要起个本地服务？** 因为浏览器不允许网页直接写磁盘文件，
+> 而「取消关注某个群」「标记已完成」必须落到 `data/board_state.json`，爬虫下次才知道要跳过。
+> 这个服务只用 Python 标准库，跑在 `127.0.0.1:8766`，只监听本机，不对外开端口。
 
 ---
 
@@ -171,45 +143,55 @@ pip install -r requirements.txt
 | `wechat.process` | `"Weixin.exe"` | 微信进程名（4.x 是 `Weixin.exe`，3.x 是 `WeChat.exe`） |
 | `board.port` | `8766` | 看板服务端口，被占用会自动往后找 |
 | `board.open_browser` | `true` | 启动时自动开浏览器 |
-| `paths.data_dir` | `""` | 抓取结果放哪，留空=项目目录 |
-| `paths.work_dir` | `""` | 解密产物放哪，留空=`vendor/wcdb-key-tool/` |
+| `paths.data_dir` | `""` | 抓取结果放哪，留空=`data/` |
+| `paths.work_dir` | `""` | 解密产物放哪，留空=`app/vendor/wcdb-key-tool/` |
 
 ---
 
 ## 定时跑
 
-想每天早上自动刷新，用 Windows 任务计划：
+想每天自动刷新，用 Windows 任务计划，填三格：
 
 ```
-程序：   <项目路径>\更新一次.cmd
-触发器： 每天 09:00（或你想要的时间）
+程序或脚本： C:\Program Files\Python311\python.exe
+添加参数：   -X utf8 app\launch.py update
+起始于：     C:\path\to\xiaojia-group-board
 ```
 
 注意两点：
 
-- **QQ 侧如果当时 QQ 已开着，那一路会跳过**（NapCat 需要一个新进程），微信侧不受影响
-- 想常驻看板，把 `启动看板.cmd` 的快捷方式放进启动文件夹，之后打开
+- **QQ 侧如果当时 QQ 已开着，那一路会跳过**（NapCat 需要一个新进程），微信侧不受影响，
+  这种跳过不算失败，返回码是 0
+- 看板常驻不用管：把 `启动看板.cmd` 的快捷方式放进启动文件夹，之后打开
   `http://127.0.0.1:8766/` 就行
 
 ---
 
 ## 目录结构
 
+根目录只有 4 样东西：**一个 .cmd、一份 README、一份配置、一块看板**，代码全在 `app/` 里。
+
 ```
 xiaojia-group-board/
-├─ launch.py              统一入口（init / check / board / update / demo）
-├─ settings.py            配置读取，config.json 缺了就自动建
-├─ update_wx.py           微信一键：取密钥 → 解密 → 抓 → 重出看板
-├─ wx_crawl.py            从解密后的微信库里抠 @所有人
-├─ auto.py                QQ 一键：启动 → 抓 → 退出
-├─ crawl_ws.py            通过 OneBot 反向 WS 抓 QQ 群消息
-├─ digest.py              规则式抠截止时间、判断要不要动手
-├─ report.py              渲染看板（自包含单 HTML，图也内嵌）
-├─ serve_board.py         本地小服务（127.0.0.1），负责保存状态
-├─ board_state.py         已完成 / 已退订群的唯一真相
-├─ assets/                logo、截图
-├─ demo/                  示例数据，可直接生成看板
-└─ vendor/wcdb-key-tool/  微信密钥提取（MIT，第三方）
+├─ 启动看板.cmd          ← 唯一入口，双击它就够了
+├─ config.json           ← 自动生成，想改参数编辑它
+├─ 小贾AI群看板.html      ← 自动生成的看板
+├─ app/                  ← 全部代码
+│  ├─ launch.py          启动 + 自检 + 自动装依赖
+│  ├─ serve_board.py     本地服务：看板 + 刷新 + 体检（只用标准库）
+│  ├─ settings.py        配置读取与路径约定
+│  ├─ update_wx.py       微信一键：取密钥 → 解密 → 抓 → 重出看板
+│  ├─ wx_crawl.py        从解密后的微信库里抠 @所有人
+│  ├─ auto.py            QQ 一键：启动 → 抓 → 退出
+│  ├─ crawl_ws.py        通过 OneBot 反向 WS 抓 QQ 群消息
+│  ├─ digest.py          规则式抠截止时间、判断要不要动手
+│  ├─ report.py          渲染看板（自包含单 HTML，图也内嵌）
+│  ├─ board_state.py     已完成 / 已退订群的唯一真相
+│  └─ vendor/            微信密钥提取（MIT，第三方）
+├─ data/                 ← 抓取结果、状态、日志
+├─ assets/               logo、截图
+├─ demo/                 示例数据
+└─ docs/                 技术原理
 ```
 
 ---
@@ -217,7 +199,7 @@ xiaojia-group-board/
 ## 常见问题
 
 **Q：微信那一侧提示「一个库都没解开」**
-密钥失效了（换了账号、微信重建了库）。用 `python update_wx.py --force` 重新提取。
+密钥失效了（换了账号、微信重建了库）。用 `python app/update_wx.py --force` 重新提取。
 前提是微信**正在运行**，密钥只能从活动进程里取。
 
 **Q：微信必须开着才能跑吗？**
@@ -233,7 +215,7 @@ xiaojia-group-board/
 不是吞了，是被时间窗口挡掉了。
 
 **Q：换电脑 / 换目录后打不开**
-看板是用绝对路径生成的，重新跑一次 `更新一次.cmd` 就行。
+看板是用绝对路径生成的，重新点一次「刷新数据」就行。
 
 **Q：能不能抓私聊、抓图片、抓所有消息？**
 不能，也刻意不做。只抓群里的 `@所有人` / `@全体成员` 文字消息 ——
@@ -244,7 +226,7 @@ xiaojia-group-board/
 ## 隐私与安全
 
 - 所有数据**只存在你自己电脑上**，没有任何上报接口，代码里也没有埋点
-- 解密出来的明文库在 `vendor/wcdb-key-tool/decrypted/`，跟你的聊天记录同等敏感，
+- 解密出来的明文库在 `app/vendor/wcdb-key-tool/decrypted/`，跟你的聊天记录同等敏感，
   `.gitignore` 已排除，**别提交、别分享**
 - 密钥文件 `all_keys.json` 同理，泄露等于泄露数据库
 - 唯一的网络访问是 NapCat 与你本机之间的 WebSocket（`127.0.0.1`）
