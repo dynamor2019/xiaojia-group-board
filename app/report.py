@@ -298,11 +298,23 @@ mark{background:#fff3a3;padding:0 1px;border-radius:2px}
 .btn-back{flex:none;border:1px solid var(--line);background:#fff;color:var(--tx2);
       font:inherit;font-size:11px;padding:2px 8px;border-radius:6px;cursor:pointer}
 .btn-back:hover{border-color:var(--ok);color:var(--ok);background:#f0fdf4}
+/* 页脚：服务在后台跑，这里给个低调的停止入口 */
+.foot{max-width:1240px;margin:-6px auto 30px;padding:0 26px;display:none;
+      align-items:center;gap:10px;flex-wrap:wrap;
+      color:#9aa3b2;font-size:12px;line-height:1.7}
+.foot .sp{opacity:.55}
+.foot a{color:#9aa3b2;text-decoration:none;border-bottom:1px dashed currentColor;
+      cursor:pointer;transition:color .15s}
+.foot a:hover{color:var(--hot);border-bottom-color:var(--hot)}
+.bye{max-width:560px;margin:120px auto;padding:0 24px;text-align:center;
+      color:var(--tx);font-size:19px;font-weight:640;line-height:2.2}
+.bye span{display:block;color:var(--tx2);font-size:13.5px;font-weight:400}
 @media(max-width:900px){
   .cols{grid-template-columns:1fr}
   main,header{padding-left:14px;padding-right:14px}
   input[type=search]{width:100%}
   .gmeta{display:none}
+  .foot{padding-left:14px;padding-right:14px}
 }
 </style></head><body>
 %%DEMOBAR%%
@@ -358,6 +370,12 @@ mark{background:#fff3a3;padding:0 1px;border-radius:2px}
     </section>
   </div>
 </main>
+
+<footer class="foot" id="foot">
+  <span>数据只在你本机 · 关掉这个页面不会停服务</span>
+  <span class="sp">|</span>
+  <a id="btnQuit">停止看板服务</a>
+</footer>
 
 <div class="console" id="console">
   <div class="ch"><span class="dot" id="cDot"></span><span id="cTitle">输出</span>
@@ -764,6 +782,20 @@ if (DEMO) {
 if (!SERVED) {
   acts.style.display = 'none';
 } else {
+  const foot = document.getElementById('foot');
+  const btnQuit = document.getElementById('btnQuit');
+  foot.style.display = 'flex';
+  btnQuit.onclick = () => {
+    if (!confirm('停掉之后这个页面就打不开了，下次双击「启动看板.cmd」重新开。确定要停？')) return;
+    btnQuit.textContent = '正在停止…';
+    fetch('/api/quit', { method: 'POST' }).then(() => {
+      document.body.innerHTML = '<div class=bye>看板服务已停止' +
+        '<span>这个页面可以关掉，下次双击「启动看板.cmd」再开。</span></div>';
+    }).catch(() => {
+      btnQuit.textContent = '停止看板服务';
+      conShow('停不掉 —— 服务可能已经不在跑了', false);
+    });
+  };
   // 第一次打开先自查一遍，有问题直接把面板弹出来
   fetch('/api/doctor').then(r => r.json()).then(d => {
     if (!d.ok) renderDoctor(d);

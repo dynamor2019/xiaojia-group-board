@@ -17,6 +17,9 @@ data/board_state.json，爬虫下次才能跳过它 —— 所以需要一个极
     POST /api/install     安装 Python 依赖
     POST /api/refresh     开始抓取（微信 + QQ）
     GET  /api/refresh     抓取进度
+    POST /api/napcat      下载 NapCat
+    GET  /api/napcat      下载进度
+    POST /api/quit        停掉这个服务
     GET  /api/health      存活探针
 """
 from __future__ import annotations
@@ -155,6 +158,16 @@ def _child_env() -> dict:
 
 
 JOB = RefreshJob()
+
+# serve_forever 用的实例，main() 里赋值；/api/quit 要靠它停服务
+_HTTPD: "ThreadingHTTPServer | None" = None
+
+
+def _shutdown_server() -> None:
+    """停掉 serve_forever。放独立线程里跑，免得在请求线程里等自己收尾。"""
+    time.sleep(0.25)
+    if _HTTPD is not None:
+        _HTTPD.shutdown()
 
 
 # ------------------------------------------------------------------ 装 NapCat
@@ -350,6 +363,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": started, "already": not started})
         elif path == "/api/install":
             self._json(200, install_deps())
+        elif path == "/api/quit":
+            self._json(200, {"ok": True})
+            threading.Thread(target=_shutdown_server, daemon=True).start()
         else:
             self._send(404, b"not found", "text/plain; charset=utf-8")
 
@@ -378,9 +394,21 @@ def main() -> int:
     port = pick_port(port)
     url = f"http://127.0.0.1:{port}/"
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    global _HTTPD
+    _HTTPD = httpd
 
-    print(f"小贾AI群看板已启动：{url}")
-    print("右上角有「刷新 / 体检」按钮；关掉这个窗口即停止。")
+    # 实际用了哪个端口写下来：启动器靠它判断"是否已经在跑"，不必盲扫
+    pf = settings.data_dir() / "board.port"
+    try:
+        pf.write_text(str(port), encoding="utf-8")
+    except OSError:
+        pass
+
+    try:
+        print(f"小贾AI群看板已启动：{url}", flush=True)
+        print("服务在后台跑；要停就点页面最下方的「停止看板服务」。", flush=True)
+    except Exception:                                   # noqa: BLE001  没有控制台就算了
+        pass
     if open_browser:
         try:
             webbrowser.open(url)
@@ -392,6 +420,10 @@ def main() -> int:
         print("\n已停止")
     finally:
         httpd.server_close()
+        try:
+            pf.unlink()
+        except OSError:
+            pass
     return 0
 
 

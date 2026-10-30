@@ -14,8 +14,12 @@
 """
 from __future__ import annotations
 
+import os
+import socket
 import subprocess
 import sys
+import time
+import urllib.request
 from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parent
@@ -24,9 +28,20 @@ sys.path.insert(0, str(APP_DIR))
 BRAND = "小贾AI群看板"
 LINE = "=" * 56
 
+# 让子进程脱离当前控制台：窗口关掉也不影响它活着
+if os.name == "nt":
+    _DETACH = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+else:                                                   # 非 Windows 只是方便调试
+    _DETACH = 0
+
 
 def say(msg: str = "") -> None:
-    print(msg, flush=True)
+    # 没有控制台时（任务计划 / pythonw / 被别的进程拉起）sys.stdout 是 None，
+    # 直接 print 会抛 AttributeError 把整个启动器打死。
+    try:
+        print(msg, flush=True)
+    except Exception:                                   # noqa: BLE001
+        pass
 
 
 def banner(title: str) -> None:
@@ -64,6 +79,72 @@ def ensure_deps() -> bool:
         return False
 
 
+# ------------------------------------------------------------------ 看板进程
+# 探测本机必须绕开系统代理：开了 Clash / 公司代理的机器上，
+# urllib 会把 127.0.0.1 也丢给代理，空闲端口只能等到超时（实测扫一轮 12 秒）。
+_LOCAL = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def _listening(port: int, timeout: float = 0.15) -> bool:
+    """有没有人在监听。先问 socket 再发 HTTP：某些机器上连空闲端口要等到超时，
+    只对"确实有人"的端口发请求，才能把探测压在一瞬间。"""
+    try:
+        with socket.socket() as s:
+            s.settimeout(timeout)
+            return s.connect_ex(("127.0.0.1", port)) == 0
+    except OSError:
+        return False
+
+
+def _health(port: int, timeout: float = 1.5) -> bool:
+    """这个端口上是不是已经跑着我们的看板。"""
+    try:
+        with _LOCAL.open(f"http://127.0.0.1:{port}/api/health",
+                         timeout=timeout) as r:
+            return r.status == 200 and b'"ok"' in r.read()
+    except Exception:                                   # noqa: BLE001
+        return False
+
+
+def _port_file():
+    import settings
+    return settings.data_dir() / "board.port"
+
+
+def running_port(port: int) -> int | None:
+    """先信上次写下的端口，再试配置里的，最后扫一小段兜底。"""
+    cands: list[int] = []
+    pf = _port_file()
+    if pf.exists():
+        try:
+            cands.append(int(pf.read_text(encoding="utf-8").strip()))
+        except (ValueError, OSError):
+            pass
+    for p in [port, port + 1, port + 2, port + 3]:
+        if p not in cands:
+            cands.append(p)
+    for p in cands:
+        if _listening(p) and _health(p):
+            return p
+    return None
+
+
+def open_board(port: int) -> None:
+    try:
+        import webbrowser
+        webbrowser.open(f"http://127.0.0.1:{port}/")
+    except Exception:                                   # noqa: BLE001
+        pass
+
+
+def _tail(path: Path, n: int = 12) -> list[str]:
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    return [x for x in lines if x.strip()][-n:]
+
+
 def cmd_board() -> int:
     import settings
 
@@ -73,12 +154,56 @@ def cmd_board() -> int:
 
     ensure_deps()
 
-    say(f"[数据] {settings.data_dir()}")
-    say(f"[看板] {settings.board_file().name}")
-    say()
+    port = int(settings.get("board", "port", 8766))
+    want_browser = bool(settings.get("board", "open_browser", True))
 
-    import serve_board
-    return serve_board.main()
+    # 已经有一份在后台跑着：直接开浏览器，不再起第二个
+    alive = running_port(port)
+    if alive:
+        say(f"[已在运行] http://127.0.0.1:{alive}/")
+        say("      窗口马上关掉，看板不受影响。")
+        if want_browser:
+            open_board(alive)
+        return 0
+
+    logdir = settings.data_dir() / "logs"
+    logdir.mkdir(parents=True, exist_ok=True)
+    log = logdir / "看板.log"
+    if log.exists() and log.stat().st_size > 512 * 1024:
+        try:
+            log.unlink()                                # 超过 512 KB 就重开一份
+        except OSError:
+            pass
+    with open(log, "a", encoding="utf-8") as f:
+        f.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} 启动 =====\n")
+
+    say("[后台启动] 窗口会自动关掉，服务继续跑 —— 关窗口不影响看板。")
+    fh = open(log, "ab")
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-X", "utf8", str(APP_DIR / "serve_board.py")],
+            cwd=str(settings.ROOT),
+            stdin=subprocess.DEVNULL, stdout=fh, stderr=subprocess.STDOUT,
+            creationflags=_DETACH, close_fds=True)
+    finally:
+        fh.close()                                     # 子进程自己握着句柄
+
+    deadline = time.time() + 25
+    while time.time() < deadline:
+        found = running_port(port)
+        if found:
+            say(f"[就绪] 看板在 http://127.0.0.1:{found}/")
+            say("      这个窗口可以关；要停服务，点页面最下方的「停止看板服务」。")
+            return 0
+        if proc.poll() is not None:                    # 子进程自己退了 = 起不来
+            break
+        time.sleep(0.3)
+
+    say("[失败] 服务没起来，日志最后几行：")
+    for ln in _tail(log):
+        say("      " + ln)
+    say(f"      完整日志：{log}")
+    return 1
 
 
 def cmd_update() -> int:
