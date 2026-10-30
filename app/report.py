@@ -66,7 +66,7 @@ def pick_wx_src() -> Path | None:
 
 def collect(today: date, days: int = 30, sources=None) -> list[dict]:
     if sources is None:
-        sources = [(SRC, "QQ")]
+        sources = [(pick_src(), "QQ")]      # 每天文件名带日期，必须取最新那份
         wx = pick_wx_src()
         if wx and wx.exists():
             sources.append((wx, "微信"))
@@ -686,8 +686,9 @@ function renderDoctor(d) {
     const mark = c.ok ? '✓ ' : (c.level === 'fail' ? '✕ ' : '! ');
     conLine(mark + c.name + '　' + c.detail,
             c.ok ? '#86efac' : (c.level === 'fail' ? '#fca5a5' : '#fcd34d'));
+    if (!c.ok && c.fix === 'napcat') addNapcatFix();
   });
-  if (!d.ok) {
+  if (d.checks.some(c => !c.ok && c.fix === 'deps')) {
     const sp = conLine('→ 点这里安装 / 修复依赖', '#7dd3fc');
     sp.style.cursor = 'pointer';
     sp.style.textDecoration = 'underline';
@@ -700,6 +701,51 @@ function renderDoctor(d) {
     };
   }
   conShow(d.ok ? '体检通过' : ('有 ' + d.fails + ' 项待处理'), false);
+}
+
+// NapCat 一键下载：POST 起任务，GET 轮询进度，装完自动复查体检
+let napTimer = null;
+
+function addNapcatFix() {
+  const sp = conLine('   ⬇ 下载 NapCat（约 34 MB，解压到项目的 napcat 目录）', '#7dd3fc');
+  sp.style.cursor = 'pointer';
+  sp.style.textDecoration = 'underline';
+  sp.onclick = () => {
+    if (napTimer) return;
+    sp.textContent = '   正在连接 GitHub…';
+    sp.style.cursor = 'default';
+    sp.style.textDecoration = 'none';
+    fetch('/api/napcat', { method: 'POST' }).then(r => r.json()).then(x => {
+      if (!x.ok) conLine('   已经有一个下载在跑了，等它结束。', '#fcd34d');
+      pollNapcat();
+      napTimer = setInterval(pollNapcat, 800);
+    }).catch(() => conLine('   接口调不通（是不是直接双击打开了 html？）', '#fca5a5'));
+  };
+}
+
+function pollNapcat() {
+  fetch('/api/napcat').then(r => r.json()).then(s => {
+    conClear();
+    s.lines.forEach(l => {
+      let c = '#cbd5e1';
+      if (l.indexOf('失败') >= 0) c = '#fca5a5';
+      else if (l.indexOf('完成') >= 0 || l.indexOf('就绪') >= 0) c = '#86efac';
+      else if (l.indexOf('版本') >= 0) c = '#93c5fd';
+      conLine('   ' + l, c);
+    });
+    if (s.running) { conShow('正在下载 NapCat…', true); return; }
+    if (napTimer) { clearInterval(napTimer); napTimer = null; }
+    if (s.ok) {
+      conShow('NapCat 装好了，复查中…', false);
+      setTimeout(() => {
+        fetch('/api/doctor').then(r => r.json()).then(renderDoctor).catch(() => {});
+      }, 500);
+    } else {
+      conShow('NapCat 下载失败', false);
+      conLine('   也可以手动下：github.com/NapNeko/NapCatQQ/releases 里的 NapCat.Shell.zip，', '#7dd3fc');
+      conLine('   解压出来的文件直接放进上面提示的那个 napcat 目录。', '#7dd3fc');
+    }
+  }).catch(() => { if (napTimer) { clearInterval(napTimer); napTimer = null; } });
 }
 
 btnDoctor.onclick = () => {

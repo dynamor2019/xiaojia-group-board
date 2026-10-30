@@ -115,7 +115,7 @@ NapCat 只能注入**新创建**的进程，所以每天跑的时候先拉起一
 | 接入方式 | NapCat + OneBot 反向 WS | 本地 SQLCipher 库离线解密 |
 | 需要退出客户端吗 | **需要**（抓完即退） | **完全不用**，一直在线 |
 | 每次耗时 | 约 40–90 秒（含启动 QQ） | 约 6 秒（增量） |
-| 首次额外开销 | 下载 NapCat | 取密钥 12 秒 + 首次解密 7 秒 |
+| 首次额外开销 | 下 NapCat（点一下就自动下） | 取密钥 12 秒 + 首次解密 7 秒 |
 | 抓不到时 | QQ 已开着 → 那一路自动跳过 | 微信没开 + 有旧密钥 → 照样能抓 |
 
 > 说人话：微信是「磁盘上有，随时能读」；QQ 是「只能在它自己新建进程的那一刻读」。
@@ -145,7 +145,7 @@ cd xiaojia-group-board
 | 按钮 | 作用 |
 |---|---|
 | **↻ 刷新数据** | 立刻抓一次（微信 + QQ），日志实时滚在下方黑框里，完事自动重载看板 |
-| **环境体检** | 逐项检查 Python / 依赖 / NapCat / QQ 号 / 微信数据目录 / 密钥，红的点一下就能装依赖 |
+| **环境体检** | 逐项检查 Python / 依赖 / NapCat / QQ 号 / 微信数据目录 / 密钥；缺 NapCat 和缺依赖都能在面板里点一下自动装 |
 | **看示例** | 切到 `demo/` 的假数据看效果，不动你的真实群 |
 
 > 第一次点「刷新数据」之前，**记得先把 QQ 退掉** —— 不然 QQ 那一路会被跳过，
@@ -155,11 +155,27 @@ cd xiaojia-group-board
 
 **微信侧开箱即用**（目录自动探测），不用任何额外准备。
 
-QQ 侧需要 [NapCat](https://github.com/NapNeko/NapCatQQ/releases)：
+QQ 侧需要 [NapCat](https://github.com/NapNeko/NapCatQQ)，**不用手动去 GitHub 下载**：
 
-1. 下载 Windows 版，解压到项目下的 `napcat\`（或把 `qq.napcat_dir` 指到你放的位置）
-2. 在 `config.json` 里填上 `qq.uin`
-3. 点「环境体检」确认 NapCat 那项变绿
+1. 双击「启动看板.cmd」，点右上角「环境体检」
+2. 看到 `NapCat 没找到 …` 那行，**点它下面的「⬇ 下载 NapCat」** —— 自动下 34 MB、
+   解压到项目下的 `napcat\`，进度会实时打在面板里，装完自动复查变绿
+3. 在 `config.json` 里填上 `qq.uin`
+4. 点一次「刷新数据」，QQ 被拉起来后扫码（就这一次，之后免扫码）
+
+也支持命令行，适合没有浏览器的场合：
+
+```bat
+python app\launch.py napcat
+```
+
+> **下不动怎么办？** 公司网络／代理挡住 GitHub 时，自动下载会失败并打印日志。
+> 手动方案一样简单：去 [Releases](https://github.com/NapNeko/NapCatQQ/releases) 下
+> `NapCat.Shell.zip`（**别下 OneKey，那个要人点**），把解压出来的文件**全部**放进
+> 体检提示的那个 `napcat` 目录，再点一次「环境体检」即可。
+>
+> 重复下载不会顶掉你的登录状态 —— 解压时会跳过 `napcat\config\` 里已有的文件，
+> 所以升级 NapCat 之后不用重新扫码。
 
 > 不想碰 QQ 就把 `config.json` 里的 `qq.enabled` 改成 `false`，只当微信看板用，一样好用。
 
@@ -229,7 +245,9 @@ xiaojia-group-board/
 │  ├─ digest.py          规则式抠截止时间、判断要不要动手
 │  ├─ report.py          渲染看板（自包含单 HTML，图也内嵌）
 │  ├─ board_state.py     已完成 / 已退订群的唯一真相
+│  ├─ napcat_setup.py    自动下载 / 升级 NapCat
 │  └─ vendor/            微信密钥提取（MIT，第三方）
+├─ napcat/               ← 一键下载的 NapCat（用完才有）
 ├─ data/                 ← 抓取结果、状态、日志
 ├─ assets/               logo、截图
 ├─ demo/                 示例数据
@@ -249,8 +267,13 @@ xiaojia-group-board/
 但新消息要等微信把消息写进库，所以想抓最新的还是让微信开着顺便聊。
 
 **Q：QQ 侧一条都没抓到**
-按顺序排查：① 体检里 NapCat 路径对不对；② QQ 号填了没；③ 跑的时候 QQ 是不是已经开着
-（那就跳过了）；④ 群里最近真的没有 `@所有人`。
+按顺序排查：① 体检里 NapCat 是不是绿的，没绿就点「⬇ 下载 NapCat」；② QQ 号填了没；
+③ 跑的时候 QQ 是不是已经开着（那就跳过了）；④ 群里最近真的没有 `@所有人`。
+
+**Q：NapCat 自动下载失败**
+GitHub 连不上（代理 / 公司网络）。面板会打印失败原因，并给出手动方案：
+去 [Releases](https://github.com/NapNeko/NapCatQQ/releases) 下 `NapCat.Shell.zip`，
+解压出来的文件全部丢进体检提示的那个 `napcat` 目录即可。选 Shell 版，**别选 OneKey**。
 
 **Q：消息比预期少**
 默认只留最近 `days` 天、且**没过期**的。头部那行会写「N 条超过 30 天、M 条已过期，已隐藏」，

@@ -157,13 +157,60 @@ def _child_env() -> dict:
 JOB = RefreshJob()
 
 
+# ------------------------------------------------------------------ 装 NapCat
+class NapCatJob:
+    """下载 / 升级 NapCat 的后台任务，进度一行行吐给前端。"""
+
+    def __init__(self) -> None:
+        self.lines: list[str] = []
+        self.running = False
+        self.ok: bool | None = None
+        self._lock = threading.Lock()
+
+    def add(self, text: str) -> None:
+        with self._lock:
+            for ln in str(text).splitlines():
+                if ln.strip():
+                    self.lines.append(ln.rstrip())
+            del self.lines[:-200]
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            return {"running": self.running, "ok": self.ok, "lines": list(self.lines)}
+
+    def start(self) -> bool:
+        if self.running:
+            return False
+        with self._lock:
+            self.lines = []
+        self.ok = None
+        self.running = True
+        threading.Thread(target=self._run, daemon=True).start()
+        return True
+
+    def _run(self) -> None:
+        try:
+            import napcat_setup
+            napcat_setup.download(settings.napcat_dir(), on_progress=self.add)
+            self.ok = True
+        except Exception as e:                          # noqa: BLE001
+            self.ok = False
+            self.add(f"失败：{e}")
+        finally:
+            self.running = False
+
+
+NAPJOB = NapCatJob()
+
+
 # ------------------------------------------------------------------ 体检
 def doctor() -> dict:
     checks: list[dict] = []
 
-    def add(name: str, ok: bool, detail: str, level: str = "warn") -> None:
+    def add(name: str, ok: bool, detail: str, level: str = "warn",
+            fix: str | None = None) -> None:
         checks.append({"name": name, "ok": bool(ok), "detail": detail,
-                       "level": "ok" if ok else level})
+                       "level": "ok" if ok else level, "fix": None if ok else fix})
 
     v = sys.version_info
     add("Python", v >= (3, 10), f"{sys.version.split()[0]}　{sys.executable}", "fail")
@@ -172,7 +219,7 @@ def doctor() -> dict:
         import websockets
         add("websockets", True, getattr(websockets, "__version__", "已安装"))
     except ImportError:
-        add("websockets", False, "未安装 —— 点「安装依赖」即可", "fail")
+        add("websockets", False, "未安装 —— 点下面的链接自动装", "fail", fix="deps")
 
     if settings.CONFIG_FILE.exists():
         add("config.json", True, str(settings.CONFIG_FILE))
@@ -182,7 +229,11 @@ def doctor() -> dict:
     if settings.get("qq", "enabled", True):
         nd = settings.napcat_dir()
         ok = nd.exists() and (nd / "NapCatWinBootMain.exe").exists()
-        add("NapCat", ok, str(nd) if ok else f"没找到 {nd}　（只影响 QQ）")
+        if ok:
+            add("NapCat", True, str(nd))
+        else:
+            add("NapCat", False,
+                f"没找到 {nd}（只影响 QQ；微信不受影响）", fix="napcat")
         uin = str(settings.get("qq", "uin") or "").strip()
         add("QQ 号", bool(uin), uin or "未填 —— 不填就只能手动开 QQ 再抓")
         exe = settings.qq_exe()
@@ -267,6 +318,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, doctor())
         elif path == "/api/refresh":
             self._json(200, JOB.snapshot())
+        elif path == "/api/napcat":
+            self._json(200, NAPJOB.snapshot())
         elif path == "/api/health":
             st = board_state.load()
             self._json(200, {"ok": True, "done": len(st["done"]),
@@ -291,6 +344,9 @@ class Handler(BaseHTTPRequestHandler):
                              "muted": len(saved["muted"])})
         elif path == "/api/refresh":
             started = JOB.start()
+            self._json(200, {"ok": started, "already": not started})
+        elif path == "/api/napcat":
+            started = NAPJOB.start()
             self._json(200, {"ok": started, "already": not started})
         elif path == "/api/install":
             self._json(200, install_deps())

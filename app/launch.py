@@ -5,6 +5,7 @@
     python app/launch.py board     同上
     python app/launch.py update    命令行跑一次抓取（给任务计划用）
     python app/launch.py check     命令行体检
+    python app/launch.py napcat    自动下载 / 升级 NapCat（只影响 QQ）
 
 启动时自动做三件事：
   1. 没有 config.json 就从 config.example.json 生成一份
@@ -110,12 +111,47 @@ def cmd_check() -> int:
         mark = "✓" if c["ok"] else ("✕" if c["level"] == "fail" else "!")
         say(f"  {mark} {c['name']}　{c['detail']}")
     say()
+    if any(c.get("fix") == "napcat" for c in d["checks"]):
+        say("  → NapCat 没装，跑这个自动下（约 34 MB）：")
+        say("    python app/launch.py napcat")
+        say()
     say("结论：" + ("没问题，双击「启动看板.cmd」即可" if d["ok"]
                   else f"有 {d['fails']} 项待处理"))
     return 0 if d["ok"] else 1
 
 
-COMMANDS = {"board": cmd_board, "update": cmd_update, "check": cmd_check}
+def cmd_napcat() -> int:
+    banner("装 NapCat")
+    import napcat_setup
+    import settings
+
+    nd = settings.napcat_dir()
+    if napcat_setup.is_installed(nd):
+        say(f"已经装好了：{nd}")
+        say("再跑一次这个命令可以升级，config 里已有的登录状态会保留。")
+        return 0
+
+    say(f"目标位置：{nd}")
+    say("只影响 QQ，微信侧不需要它。开始下载…")
+    say()
+    try:
+        r = napcat_setup.download(nd, on_progress=lambda m: say("  " + m))
+    except Exception as e:                              # noqa: BLE001
+        say()
+        say(f"[失败] {e}")
+        say("手动方案：去 github.com/NapNeko/NapCatQQ/releases")
+        say("下 NapCat.Shell.zip，把解压出来的文件全部放进：")
+        say(f"  {nd}")
+        return 1
+
+    say()
+    say(f"[完成] NapCat {r['tag']}，解出 {r['files']} 个文件")
+    say("下一步：打开看板，点右上角「刷新数据」，QQ 会被自动拉起来。")
+    return 0
+
+
+COMMANDS = {"board": cmd_board, "update": cmd_update,
+            "check": cmd_check, "napcat": cmd_napcat}
 
 
 def main() -> int:
@@ -133,6 +169,7 @@ def main() -> int:
         say("  python app/launch.py           启动看板（默认）")
         say("  python app/launch.py update    抓一次")
         say("  python app/launch.py check     体检")
+        say("  python app/launch.py napcat    下载 / 升级 NapCat")
         return 0
     if cmd not in COMMANDS:
         say(f"未知命令：{cmd}（可用：{' / '.join(COMMANDS)}）")

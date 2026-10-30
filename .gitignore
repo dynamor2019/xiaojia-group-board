@@ -1,6 +1,11 @@
 # ------- 个人配置 -------
 config.json
 
+# ------- NapCat：一键下载的 34 MB 第三方二进制，别进仓库 -------
+# 默认落在根目录 napcat/，但 qq.napcat_dir 可能指到别处，所以不限层级
+napcat/
+NapCat.Shell.zip
+
 # ------- 运行产物：抓取结果 / 状态 / 日志，整个 data/ 都不进仓库 -------
 data/
 
