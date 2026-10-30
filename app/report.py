@@ -258,6 +258,18 @@ h1 .tag{display:inline-block;margin-left:8px;padding:1.5px 8px;border-radius:999
   color:var(--brand);background:rgba(22,227,165,.1);border:1px solid rgba(22,227,165,.28);
   -webkit-text-fill-color:currentColor}
 .sub{color:var(--tx2);font-size:12.5px;letter-spacing:.1px}
+/* 「近 N 天」的 N 是能直接改的：数字框平时看着像普通文字，hover / 聚焦才显出输入框的样子 */
+.sub .days{display:inline-block;vertical-align:-2px;width:3.2em;margin:0 2px;padding:1px 4px;
+  border:1px solid transparent;border-radius:6px;background:transparent;color:var(--tx);
+  font:inherit;font-weight:650;font-variant-numeric:tabular-nums;text-align:center;
+  outline:none;transition:.15s;cursor:text;-moz-appearance:textfield}
+.sub .days::-webkit-outer-spin-button,.sub .days::-webkit-inner-spin-button{
+  -webkit-appearance:none;margin:0}
+.sub .days:hover{border-color:var(--line2);background:var(--bg3)}
+.sub .days:focus{border-color:var(--brand);background:var(--bg2);
+  box-shadow:0 0 0 3px rgba(22,227,165,.13)}
+.sub .days:disabled{opacity:.75;cursor:not-allowed}
+.sub .days:disabled:hover{border-color:transparent;background:transparent}
 
 .stats{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
 .stat{position:relative;padding:8px 14px 8px 13px;border-radius:11px;min-width:96px;
@@ -613,7 +625,8 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
     <img src="%%LOGO%%" alt="小贾">
     <div class="tt">
       <h1>%%BRAND%%<span class="tag">QQ · 微信</span></h1>
-      <div class="sub">抓取时间 %%NOW%% ｜ 只显示最近 <b>%%DAYS%%</b> 天的、未过期的 ｜ %%DROPPED%%</div>
+      <div class="sub">抓取 %%NOW%% · 近 <input type="number" id="daysIn" class="days"
+        min="1" max="365" step="1" value="%%DAYSN%%" title="%%DROPTIP%%"> 天</div>
     </div>
     <div class="acts" id="acts">
       <button class="btn-act ic" id="btnTheme" title="切换深色 / 浅色"><span id="thIc">☾</span></button>
@@ -750,6 +763,7 @@ const SHADOW = %%SHADOW%%;
 const SRCOFF = %%SRCOFF%%;
 const SERVED = %%SERVED%%;
 const DEMO = %%DEMO%%;
+const CUR_DAYS = %%DAYSN%%;          // 当前「近 N 天」，改之前先记着，改失败要还原
 const KEY = 'qq_at_done_v3';
 const CKEY = 'qad3';
 
@@ -834,6 +848,39 @@ function setTheme(t) {
 if (PREF.theme === 'light' || PREF.theme === 'dark') setTheme(PREF.theme);
 paintTheme();
 btnTheme.onclick = () => { setTheme(themeNow() === 'light' ? 'dark' : 'light'); savePrefs(); };
+
+/* ---------- 「近 N 天」可改 ----------
+   天数决定服务端筛哪一段数据（不是纯前端过滤 —— 超出范围的行服务端根本没发下来），
+   所以改完必须存进 config.json 再整页重取，不能只在前端改个数字。 */
+const daysIn = document.getElementById('daysIn');
+if (daysIn) {
+  if (!SERVED || DEMO) {
+    /* 直接双击 html 打开的，或者在看示例：没有服务可以改配置，别让人白改一场 */
+    daysIn.disabled = true;
+    daysIn.title = DEMO ? '示例数据固定最近 30 天' : '要改天数，请用「启动看板.cmd」打开';
+  } else {
+    daysIn.addEventListener('change', () => {
+      let n = parseInt(daysIn.value, 10);
+      if (!isFinite(n) || n < 1) n = 1;
+      if (n > 365) n = 365;
+      daysIn.value = n;
+      if (n === CUR_DAYS) return;
+      daysIn.disabled = true;
+      fetch('/api/days', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days: n })
+      }).then(r => r.json()).then(d => {
+        if (d && d.ok) { location.reload(); return; }
+        throw new Error((d && d.error) || '服务没接受');
+      }).catch(e => {
+        daysIn.disabled = false;
+        daysIn.value = CUR_DAYS;
+        alert('天数没改成：' + e.message);
+      });
+    });
+  }
+}
 
 /* 初始状态由服务端直接注入，不用异步拉取，页面不闪 */
 let done = new Set(%%DONE%% || []);
@@ -1573,7 +1620,9 @@ def build(today: date, days: int = 30, sources=None,
         hide_parts.append(f"{n_exp} 条已过期")
     if n_bare:
         hide_parts.append(f"{n_bare} 条只喊了 @所有人、上下文也找不到正文")
-    dropped_txt = ("，".join(hide_parts) + "，已隐藏") if hide_parts else ""
+    # 隐藏了多少条：不再摆在标题下面当文字，改成「近 N 天」那个框的 tooltip ——
+    # 想知道的人悬停一下就有，不想知道的人眼前就是干净的一行。
+    dropped_txt = ("已隐藏：" + "，".join(hide_parts)) if hide_parts else "没有隐藏任何条目"
     groups: dict[str, dict] = {}
     for r in rows:
         c = groups.setdefault(r["g"], {"gid": r["gid"], "n": 0, "last": ""})
@@ -1612,8 +1661,8 @@ def build(today: date, days: int = 30, sources=None,
         "%%BOARDFILE%%": settings.board_file().name,
         "%%TODAY%%": f"{today:%Y-%m-%d}",
         "%%NOW%%": f"{datetime.now():%Y-%m-%d %H:%M}",
-        "%%DAYS%%": str(days) if days else "不限",
-        "%%DROPPED%%": dropped_txt,
+        "%%DAYSN%%": str(days if days and days > 0 else 30),
+        "%%DROPTIP%%": dropped_txt,
         "%%TOTAL%%": str(len(rows)),
         "%%GN%%": str(len(groups)),
         "%%SOON%%": str(soon),

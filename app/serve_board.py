@@ -15,6 +15,7 @@ data/board_state.json，爬虫下次才能跳过它 —— 所以需要一个极
     POST /api/state       保存
     GET  /api/doctor      环境体检
     POST /api/install     安装 Python 依赖
+    POST /api/days        改「近 N 天」（存进 config.json，前端随后整页重取）
     POST /api/refresh     开始抓取（微信 + QQ）
     GET  /api/refresh     抓取进度
     POST /api/napcat      下载 NapCat
@@ -614,6 +615,18 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, install_deps())
         elif path == "/api/sources":
             self._json(200, save_sources(body if isinstance(body, dict) else {}))
+        elif path == "/api/days":
+            n = body.get("days") if isinstance(body, dict) else None
+            try:
+                n = int(n)
+            except (TypeError, ValueError):
+                self._json(400, {"ok": False, "error": "days 要给一个数字"})
+                return
+            if not 1 <= n <= 365:
+                self._json(400, {"ok": False, "error": "天数要在 1~365 之间"})
+                return
+            settings.save({"days": n})
+            self._json(200, {"ok": True, "days": n})
         elif path == "/api/update/apply":
             started = UPD.start()
             self._json(200, {"ok": started, "already": not started})
