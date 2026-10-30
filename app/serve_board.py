@@ -469,7 +469,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, update_check.ignore())
         elif path == "/api/restart":
             self._json(200, {"ok": True})
-            threading.Thread(target=_restart_server, daemon=True).start()
+            # 必须非守护线程：shutdown() 一返回，main() 就走到结尾，
+            # 守护线程会被直接掐死，"起新进程"那半句根本来不及执行。
+            threading.Thread(target=_restart_server, daemon=False).start()
         elif path == "/api/quit":
             self._json(200, {"ok": True})
             threading.Thread(target=_shutdown_server, daemon=True).start()
