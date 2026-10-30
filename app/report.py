@@ -272,6 +272,14 @@ label.chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:va
 .modal .mb .row:last-child{border-bottom:0}
 .modal .mb .cd{color:var(--tx2);font-size:11.5px;flex:none;width:78px;padding-top:2px}
 .modal .mb .cm{flex:1;min-width:0;word-break:break-word}
+.updmeta{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;
+  background:#f0fdfa;border:1px solid #ccfbf1;border-radius:9px;
+  padding:8px 11px;margin-bottom:10px;font-size:12.5px;color:#0f766e}
+.updmeta b{font-size:13px;font-weight:650;color:#0f766e}
+.updmeta span{color:#5e8f89;font-size:11.5px}
+.updmeta i{font-style:normal;color:#5e8f89}
+.updmeta em{margin-left:auto;font-style:normal;font-size:11.5px;color:#0f766e;
+  background:#ccfbf1;border-radius:20px;padding:1px 8px}
 .modal .mf{padding:11px 18px;border-top:1px solid var(--line);display:flex;
   gap:10px;align-items:center}
 .modal .mf a{color:var(--ac);font-size:12.5px;text-decoration:none}
@@ -630,6 +638,32 @@ function writeCookie(ids) {
   } catch (e) { return false; }
 }
 
+/* ---------- 界面偏好：隐藏已完成 / 只看带日期的 ----------
+   这两项是"设一次就一直这样"的东西，刷新、重开、换端口都得记住。
+   cookie 走 path=/ 在整台机器上共享（预览面板换随机端口也不会丢），
+   localStorage 有就用它的（更及时），两边都写。 */
+const PKEY = 'qad_prefs_v1';
+function readPrefs() {
+  let o = {};
+  try { o = JSON.parse(localStorage.getItem(PKEY) || '{}') || {}; } catch (e) {}
+  const m = document.cookie.match(/(?:^|;\\s*)qadp=([^;]*)/);
+  if (m) {
+    try { o = Object.assign(JSON.parse(decodeURIComponent(m[1])) || {}, o); } catch (e) {}
+  }
+  return o;
+}
+function savePrefs() {
+  const s = JSON.stringify({ hideDone: hideDone.checked, onlyTodo: onlyTodo.checked });
+  try { localStorage.setItem(PKEY, s); } catch (e) {}
+  try {
+    document.cookie = 'qadp=' + encodeURIComponent(s) + ';path=/;max-age=63072000;SameSite=Lax';
+  } catch (e) {}
+}
+const PREF = readPrefs();
+/* 默认：隐藏已完成 = 勾上（标完就不想再看见它），只看带日期的 = 不勾 */
+hideDone.checked = PREF.hideDone === undefined ? true : !!PREF.hideDone;
+onlyTodo.checked = !!PREF.onlyTodo;
+
 /* 初始状态由服务端直接注入，不用异步拉取，页面不闪 */
 let done = new Set(%%DONE%% || []);
 let muted = new Map();
@@ -739,7 +773,9 @@ function cardHTML(r) {
 function groupHTML(g, rs, qs) {
   const last = rs.reduce((m, r) => r.t > m ? r.t : m, '');
   const src = rs[0].src || 'QQ', gid = rs[0].gid || '';
-  const open = (qs.length || onlyTodo.checked || gsel.value || hideDone.checked) ? ' open' : '';
+  // 「隐藏已完成」不再参与这里的判断 —— 它现在默认就是勾上的，
+  // 算进来的话每张卡都会默认展开，页面长得没法看
+  const open = (qs.length || onlyTodo.checked || gsel.value) ? ' open' : '';
   const body = rs.map(r => {
     const main = r.x || r.c || '';
     const extra = (r.x && r.c)
@@ -869,8 +905,8 @@ document.getElementById('resetDone').addEventListener('click', () => {
 
 q.addEventListener('input', render);
 gsel.addEventListener('change', render);
-onlyTodo.addEventListener('change', render);
-hideDone.addEventListener('change', render);
+onlyTodo.addEventListener('change', () => { savePrefs(); render(); });
+hideDone.addEventListener('change', () => { savePrefs(); render(); });
 renderMuted();
 render();
 
@@ -1107,13 +1143,12 @@ function srcRender(d) {
   qqExe.value = curExe;
   document.getElementById('qqExePick').style.display = '';
 
-  // QQ 号（多个就问）
+  // QQ 号（多个也默认选上最近用的那个，不再逼用户选）
   qqUin.textContent = '';
   const uins = d.qq.uin_list || [];
-  if (uins.length > 1) qqUin.appendChild(opt('', '— 请选择用哪个号 —'));
   if (!uins.length) qqUin.appendChild(opt('', '这台机器还没登录过 QQ'));
   uins.forEach(u => qqUin.appendChild(opt(u, u)));
-  qqUin.value = d.qq.uin || (uins.length === 1 ? uins[0] : '');
+  qqUin.value = d.qq.default || d.qq.uin || (uins[0] || '');
 
   // 微信开关
   wxOn.checked = !!d.wechat.enabled;
@@ -1122,14 +1157,13 @@ function srcRender(d) {
   // 微信账号
   wxDir.textContent = '';
   const cands = d.wechat.candidates || [];
-  if (cands.length > 1) wxDir.appendChild(opt('', '— 请选择用哪个号 —'));
   if (!cands.length) wxDir.appendChild(opt('', '没找到微信数据目录'));
   cands.forEach(c => wxDir.appendChild(opt(
     c.path,
     c.account + ' · ' + c.db_count + ' 个库 · ' + c.mtime_txt + (c.official ? '' : '（旧位置）')
   )));
-  // 多个账号就留空，逼用户自己选 —— 选错不是抓不到，是抓出来一片空
-  wxDir.value = d.wechat.db_dir || (cands.length === 1 ? cands[0].path : '');
+  // 默认选上：配置里存的 > 自动探测到的那个。选了就存进 config.json，刷新不会再变
+  wxDir.value = d.wechat.default || d.wechat.db_dir || d.wechat.current || '';
   wxPathShow.value = wxDir.value || '';
 
   srcMsg.className = 'srcmsg';
@@ -1170,33 +1204,37 @@ function srcPickPath(kind) {
   }
 }
 
-function srcSave() {
-  if (!SRC) { srcMsgShow('还没读到当前设置，等一下再点保存。', 'err'); return; }
-  const body = {
+function srcBody() {
+  return {
     qq: { enabled: qqOn.checked, uin: qqUin.value || '', exe: qqExe.value || '' },
     wechat: { enabled: wxOn.checked, db_dir: wxDir.value || '' }
   };
-  if (body.qq.enabled && !body.qq.uin && (SRC.qq.uin_list || []).length > 1) {
-    srcMsgShow('QQ 有 ' + SRC.qq.uin_list.length + ' 个号，得先选一个。', 'err');
-    return;
-  }
-  if (body.wechat.enabled && !body.wechat.db_dir && (SRC.wechat.candidates || []).length > 1) {
-    srcMsgShow('微信有 ' + SRC.wechat.candidates.length + ' 个账号，得先选一个。', 'err');
+}
+
+/* quiet=true 是"改一下就记住"：开关和账号下拉不等人点保存，
+   省得下次刷新又变成别的号 —— 但只给一句轻提示，不打断操作 */
+function srcSave(quiet) {
+  if (!SRC) { srcMsgShow('还没读到当前设置，等一下再点保存。', 'err'); return; }
+  const body = srcBody();
+  if (!body.qq.uin && (SRC.qq.uin_list || []).length) {
+    srcMsgShow('QQ 号没选上，重新点一下下拉框。', 'err');
     return;
   }
   const btn = document.getElementById('srcSave');
-  btn.disabled = true; btn.textContent = '保存中…';
+  if (!quiet) { btn.disabled = true; btn.textContent = '保存中…'; }
   fetch('/api/sources', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   }).then(r => r.json()).then(x => {
-    btn.disabled = false; btn.textContent = '保存';
+    if (!quiet) { btn.disabled = false; btn.textContent = '保存'; }
     if (!x.ok) { srcMsgShow(x.error || '没保存成功', 'err'); return; }
     srcRender(x.info);
-    srcMsgShow('已保存。点右上角「↻ 刷新数据」按新设置读一次，看板上就会跟着变。', 'ok');
+    srcMsgShow(quiet
+      ? '已记住。点「↻ 刷新数据」按新设置读一次。'
+      : '已保存。点右上角「↻ 刷新数据」按新设置读一次，看板上就会跟着变。', 'ok');
   }).catch(() => {
-    btn.disabled = false; btn.textContent = '保存';
+    if (!quiet) { btn.disabled = false; btn.textContent = '保存'; }
     srcMsgShow('保存失败，服务可能已经停了。', 'err');
   });
 }
@@ -1206,28 +1244,21 @@ if (document.getElementById('btnSrc')) {
   document.getElementById('srcClose').onclick = () => srcOpen(false);
   document.getElementById('srcCancel').onclick = () => srcOpen(false);
   srcModal.onclick = e => { if (e.target === srcModal) srcOpen(false); };
-  document.getElementById('srcSave').onclick = srcSave;
+  document.getElementById('srcSave').onclick = () => srcSave(false);
   document.getElementById('qqExePick').onclick = () => srcPickPath('exe');
   document.getElementById('wxDirPick').onclick = () => srcPickPath('dir');
-  qqOn.onchange = () => srcSt('blkQQ', qqOn, qqSt);
-  wxOn.onchange = () => srcSt('blkWX', wxOn, wxSt);
-  wxDir.onchange = () => { wxPathShow.value = wxDir.value || ''; };
+  // 开关和账号：改一下就落盘，下次刷新还是这个
+  qqOn.onchange = () => { srcSt('blkQQ', qqOn, qqSt); srcSave(true); };
+  wxOn.onchange = () => { srcSt('blkWX', wxOn, wxSt); srcSave(true); };
+  qqUin.onchange = () => srcSave(true);
+  wxDir.onchange = () => { wxPathShow.value = wxDir.value || ''; srcSave(true); };
 
   // 列头「读取已关闭」小标签，点一下直接开面板
   const offQQ = document.getElementById('offQQ');
   const offWX = document.getElementById('offWX');
   if (SRCOFF.qq) { offQQ.style.display = ''; offQQ.onclick = () => srcOpen(true); }
   if (SRCOFF.wechat) { offWX.style.display = ''; offWX.onclick = () => srcOpen(true); }
-  // 第一次进来如果有多账号没定，主动弹一次（一天最多烦一次）
-  if (SRCOFF.ask) {
-    let nag = false;
-    try {
-      const last = parseInt(localStorage.getItem('qad_src_ask') || '0', 10);
-      nag = !last || (Date.now() - last) > 86400000;
-      if (nag) localStorage.setItem('qad_src_ask', String(Date.now()));
-    } catch (e) { nag = false; }
-    if (nag) setTimeout(() => srcOpen(true), 900);
-  }
+  // 不再主动弹面板 —— 默认值已经选好了，天天弹等于天天问同一句话
 }
 
 /* ---------- 更新提示（每天一次心跳，结果由服务端缓存） ---------- */
@@ -1240,10 +1271,20 @@ function updModalShow(on) { updModal.classList.toggle('show', !!on); }
 
 function updRender() {
   if (!UPD || !UPD.notes) return;
-  updList.innerHTML = UPD.notes.map(n =>
-    '<div class="row"><div class="cd">' + esc(n.date || '') + '</div>' +
-    '<div class="cm">' + esc(n.msg || '') + '</div></div>').join('')
-    || '<div class="row"><div class="cm">这次没有提交说明，直接更新就行。</div></div>';
+  const n = UPD.notes.length;
+  const meta = '<div class="updmeta">' +
+    '<b>v' + esc(UPD.version || '') + '</b>' +
+    '<span>你的版本</span>' +
+    '<i>→</i>' +
+    '<b>' + esc(UPD.latest || '') + '</b>' +
+    '<span>' + esc(UPD.latest_date || '远端最新') + '</span>' +
+    (n ? '<em>' + n + ' 条改动</em>' : '') +
+    '</div>';
+  updList.innerHTML = meta + (UPD.notes.map(x =>
+    '<div class="row"><div class="cd">' + esc(x.date || '') + '</div>' +
+    '<div class="cm">' + esc(x.msg || '') + '</div></div>').join('')
+    || '<div class="row"><div class="cm">这次没写提交说明 —— 可以直接更，' +
+       '想先看改了什么就点下面「在 GitHub 上看」。</div></div>');
   document.getElementById('updGit').href = UPD.url || '#';
 }
 
@@ -1253,9 +1294,11 @@ function updLoad(force) {
     .then(r => r.json()).then(d => {
       UPD = d;
       if (d.has_update) {
+        const n = (d.notes || []).length;
         document.getElementById('updSub').textContent =
           '远端 ' + d.latest + (d.latest_date ? ' · ' + d.latest_date : '') +
-          '，你这里是 ' + (d.version || '') + '（' + d.current + '）';
+          (n ? '，' + n + ' 条改动' : '') +
+          '（你这里是 ' + (d.version || '') + '）';
         updbar.classList.add('show');
         updRender();
       } else {
@@ -1368,22 +1411,13 @@ def build(today: date, days: int = 30, sources=None,
 
     soon = sum(1 for r in rows if r["n"] is not None and 0 <= r["n"] <= 14)
 
-    # 数据源状态：哪一侧被关掉了、哪一侧有多个账号还没定
-    src_off = {"qq": False, "wechat": False, "ask": False}
+    # 数据源状态：哪一侧被关掉了（列头挂个「读取已关闭」标签）
+    src_off = {"qq": False, "wechat": False}
     try:
-        qq_off = not bool(settings.get("qq", "enabled", True))
-        wx_off = not bool(settings.get("wechat", "enabled", True))
-        src_off["qq"], src_off["wechat"] = qq_off, wx_off
-        if not wx_off and not str(settings.get("wechat", "db_dir") or "").strip() \
-                and len(settings.db_candidates()) > 1:
-            src_off["ask"] = True
-        if not qq_off and not str(settings.get("qq", "uin") or "").strip() \
-                and len(settings.qq_uins()) > 1:
-            src_off["ask"] = True
+        src_off["qq"] = not bool(settings.get("qq", "enabled", True))
+        src_off["wechat"] = not bool(settings.get("wechat", "enabled", True))
     except Exception:
         pass
-    if demo:
-        src_off["ask"] = False        # 示例模式别弹面板，那是假数据
 
     try:
         import board_state

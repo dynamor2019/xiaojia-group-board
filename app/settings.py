@@ -346,17 +346,27 @@ def qq_exes() -> list[str]:
 
 
 def qq_uins() -> list[str]:
-    """这台机器上用 NapCat 登录过的 QQ 号（每个号一个 napcat_<uin>.json）。"""
+    """这台机器上用 NapCat 登录过的 QQ 号（每个号一个 napcat_<uin>.json）。
+
+    **最近登录过的排前面** —— 面板要默认选中一个，选最近用过的那个最不容易错。
+    """
     d = napcat_dir() / "config"
-    out: list[str] = []
-    for f in d.glob("napcat_*.json") if d.exists() else []:
+    if not d.exists():
+        return []
+    when: dict[str, float] = {}
+    for f in d.glob("napcat_*.json"):
         stem = f.stem
         if "_" not in stem:
             continue
         uin = stem.split("_", 1)[1].strip()
-        if uin.isdigit():
-            out.append(uin)
-    return sorted(set(out))
+        if not uin.isdigit():
+            continue
+        try:
+            mt = f.stat().st_mtime
+        except OSError:
+            mt = 0.0
+        when[uin] = max(when.get(uin, 0.0), mt)
+    return sorted(when, key=lambda u: -when[u])
 
 
 if __name__ == "__main__":

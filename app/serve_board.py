@@ -316,14 +316,16 @@ NAPJOB = NapCatJob()
 def sources_info() -> dict:
     """看板「数据源」面板要的一切：开关、当前值、所有候选。
 
-    多账号时**不替用户选**：把候选全列出来让他点。选错了不是小事 ——
-    抓出来一片空，用户还以为是程序坏了。
+    多个账号时**默认预选一个**（配置里的 > 自动探测到的第一个），
+    同时在面板顶上说明"预选的是谁、不对可以换"。
+    之前那版故意留空逼用户选，结果每次刷新都像丢了一次选择 —— 反而更难用。
     """
     import datetime as _dt
 
     qq_uin = str(settings.get("qq", "uin") or "").strip()
     qq_exe = str(settings.get("qq", "exe") or "").strip()
     wx_dir = str(settings.get("wechat", "db_dir") or "").strip()
+    cur_db = settings.wechat_db_dir()
 
     exes = settings.qq_exes()
     uins = settings.qq_uins()
@@ -336,10 +338,15 @@ def sources_info() -> dict:
 
     hints: list[str] = []
     if len(cands) > 1 and not wx_dir:
-        hints.append(f"这台机器上有 {len(cands)} 个微信账号，用哪个？"
-                     "选错了不会报错，只会抓出来一片空")
+        who = ""
+        try:
+            who = Path(str(cur_db)).parent.name if cur_db else ""
+        except Exception:                               # noqa: BLE001
+            who = ""
+        hints.append(f"这台机器上有 {len(cands)} 个微信账号，"
+                     f"已按最近使用预选 {who or '第一个'} —— 不对就在下面换")
     if len(uins) > 1 and not qq_uin:
-        hints.append(f"检测到 {len(uins)} 个 QQ 号，用哪个？")
+        hints.append(f"这台机器登录过 {len(uins)} 个 QQ 号，已预选最近用的 {uins[0]} —— 不对就在下面换")
     if qq_uin and uins and qq_uin not in uins:
         hints.append(f"QQ 号 {qq_uin} 这台机器没登录过，要重新扫码")
     if not exes:
@@ -347,21 +354,21 @@ def sources_info() -> dict:
     if not cands:
         hints.append("没找到微信数据目录 —— 先正常登录一次微信，再从下面手动选文件夹")
 
-    cur_db = settings.wechat_db_dir()
     return {
         "qq": {
             "enabled": bool(settings.get("qq", "enabled", True)),
             "uin": qq_uin, "uin_list": uins,
+            "default": qq_uin or (uins[0] if uins else ""),
             "exe": qq_exe, "exe_list": exes,
             "napcat": str(settings.napcat_dir()),
         },
         "wechat": {
             "enabled": bool(settings.get("wechat", "enabled", True)),
             "db_dir": wx_dir, "current": str(cur_db or ""),
+            "default": wx_dir or str(cur_db or ""),
             "candidates": cands,
         },
         "hints": hints,
-        "needs_choice": bool(hints),
     }
 
 
