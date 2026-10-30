@@ -140,15 +140,24 @@ def collect(today: date, days: int = 30, sources=None) -> list[dict]:
     except Exception:
         done_ids = set()
     dropped_done = 0
+    ghost: dict[str, dict] = {}
     if done_ids:
         kept = []
         for r in rows:
             if r["i"] in done_ids:
                 dropped_done += 1
+                k = f"{r['src']}|{r['gid']}|{r['g']}"
+                g = ghost.setdefault(k, {"src": r["src"], "g": r["g"],
+                                         "gid": r["gid"], "n": 0})
+                g["n"] += 1
             else:
                 kept.append(r)
         rows = kept
 
+    # 整个群都被收起来的，留个空壳。否则用户看到的是「群怎么少了」，
+    # 而不是「这几条我标记过了」—— 同一个事实，两种读法，得选对的那个。
+    alive = {f"{r['src']}|{r['gid']}|{r['g']}" for r in rows}
+    collect.shadow = [v for k, v in ghost.items() if k not in alive]
     collect.dropped = (dropped_old, dropped_expired, dropped_bare, dropped_done)
     return rows
 
@@ -320,6 +329,13 @@ main{padding:18px 26px 60px}
 .grp>summary:hover{background:#fafbfc}
 .gname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gmeta{font-size:10.5px;color:var(--tx2);font-weight:400;white-space:nowrap}
+/* 整个群都被「已完成」收起来之后的空壳：群还在，只是个提示 */
+.grp.ghost{background:#fcfcfd;border-style:dashed}
+.grp.ghost>summary{font-weight:500;color:var(--tx2)}
+.grp.ghost>summary:hover{background:#f7f8fa}
+.ghost-body{padding:9px 13px;border-top:1px dashed var(--line);
+  font-size:12px;color:var(--tx2);line-height:1.7}
+.ghost-body b{color:var(--ok);font-weight:600}
 .msg{padding:9px 13px;border-top:1px solid #f1f2f5;transition:.15s}
 .msg:hover{background:#fafbfc}
 .msg-h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;
@@ -475,6 +491,7 @@ mark{background:#fff3a3;padding:0 1px;border-radius:2px}
 <script>
 const DATA = %%DATA%%;
 const GROUPS = %%GROUPSJSON%%;
+const SHADOW = %%SHADOW%%;
 const SERVED = %%SERVED%%;
 const DEMO = %%DEMO%%;
 const KEY = 'qq_at_done_v3';
@@ -581,7 +598,8 @@ function renderMuted() {
 
 Object.keys(GROUPS).sort((a, b) => GROUPS[b].n - GROUPS[a].n).forEach(g => {
   const o = document.createElement('option');
-  o.value = g; o.textContent = g + ' (' + GROUPS[g].n + ')';
+  o.value = g; o.textContent = g + ' (' + GROUPS[g].n + ')' +
+    (GROUPS[g].ghost ? ' · 已收起' : '');
   gsel.appendChild(o);
 });
 
@@ -639,6 +657,15 @@ function groupHTML(g, rs, qs) {
     '</summary>' + body + '</details>';
 }
 
+function ghostHTML(s) {
+  return '<details class="grp ghost"><summary>' +
+    '<span class="gname">' + esc(s.g) + '</span>' +
+    '<span class="gmeta">' + s.n + ' 条已完成 · 已收起</span>' +
+    '</summary><div class="ghost-body">' +
+    '这个群的 @所有人 <b>' + s.n + ' 条</b>已经标记成「完成」，所以不再列出来（群还在，不用慌）。' +
+    '想找回来：点上方「重置已完成」，再点一次「刷新数据」。</div></details>';
+}
+
 const SUF = { 'QQ': 'QQ', '微信': 'WX' };
 
 function renderCol(src, qs, gv, ot, hd) {
@@ -665,10 +692,23 @@ function renderCol(src, qs, gv, ot, hd) {
   }
   const order = [...buckets.keys()].sort((a, b) => buckets.get(b).length - buckets.get(a).length);
 
+  /* 空壳群：整群都被「已完成」收起来了。群得留着，不然看板上就是"群怎么少了" */
+  const ghosts = SHADOW.filter(s => (s.src || 'QQ') === src)
+    .filter(s => !muted.has(src + '|' + s.gid))
+    .filter(s => !gv || s.g === gv)
+    .filter(s => {
+      if (ot) return false;                     // 只看带截止时间的，空壳没意义
+      if (!qs.length) return true;
+      const hay = (s.g || '').toLowerCase();
+      return qs.every(t => hay.includes(t));
+    })
+    .map(ghostHTML);
+
+  const nGrp = order.length + ghosts.length;
   document.getElementById('soon' + sfx).innerHTML =
     soon.length ? soon.map(cardHTML).join('') : '';
-  document.getElementById('list' + sfx).innerHTML = order.length
-    ? order.map(g => groupHTML(g, buckets.get(g), qs)).join('')
+  document.getElementById('list' + sfx).innerHTML = nGrp
+    ? order.map(g => groupHTML(g, buckets.get(g), qs)).join('') + ghosts.join('')
     : '<div class="col-none">' + (
         DATA.length ? '没有匹配的记录'
         : (done.size ? '这一侧都标记成「完成」了 —— 点右上角「重置已完成」再刷新，就回来了'
@@ -677,7 +717,7 @@ function renderCol(src, qs, gv, ot, hd) {
       ) + '</div>';
 
   const nEl = document.getElementById('n' + sfx);
-  nEl.textContent = rows.length + ' 条 · ' + order.length + ' 群' +
+  nEl.textContent = rows.length + ' 条 · ' + nGrp + ' 群' +
                     (soon.length ? ' · ' + soon.length + ' 条临近截止' : '');
   return rows.length;
 }
@@ -1029,6 +1069,15 @@ def build(today: date, days: int = 30, sources=None,
         c["n"] += 1
         c["last"] = max(c["last"], r["t"])
 
+    # 空壳群也算「有喊话的群」，不然统计数字会跟着掉，看着像抓漏了
+    shadow = getattr(collect, "shadow", [])
+    for s in shadow:
+        cur = groups.get(s["g"])
+        if cur is None:
+            groups[s["g"]] = {"gid": s["gid"], "n": s["n"], "last": "", "ghost": 1}
+        else:
+            cur["n"] += s["n"]          # 同名群（QQ 和微信各有一个）就并起来数
+
     soon = sum(1 for r in rows if r["n"] is not None and 0 <= r["n"] <= 14)
 
     try:
@@ -1053,6 +1102,7 @@ def build(today: date, days: int = 30, sources=None,
         "%%DATA%%": json.dumps(rows, ensure_ascii=False, separators=(",", ":")),
         "%%DONE%%": json.dumps(st.get("done") or [], ensure_ascii=False, separators=(",", ":")),
         "%%MUTED%%": json.dumps(st.get("muted") or [], ensure_ascii=False, separators=(",", ":")),
+        "%%SHADOW%%": json.dumps(shadow, ensure_ascii=False, separators=(",", ":")),
         "%%SERVED%%": "true" if served else "false",
         "%%DEMO%%": "true" if demo else "false",
         "%%VERSION%%": VERSION,
