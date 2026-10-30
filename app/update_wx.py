@@ -110,8 +110,9 @@ def step_crawl(days: int) -> dict | None:
 
     data, stats = wx_crawl.scan(days)
     wx_crawl.write_outputs(data, days)
-    log(f"      {stats['groups_scanned']} 个群 / {stats['hits']} 条"
-        f"（丢弃空喊话 {stats['dropped_empty']} 条，"
+    bare = stats.get("bare", 0)
+    log(f"      {stats.get('groups_scanned', 0)} 个群 / {stats.get('hits', 0)} 条"
+        f"（其中 {bare} 条只喊了 @所有人、上下文也找不到正文；"
         f"跳过 {stats.get('skipped_muted', 0)} 个已取消关注的群）")
     return data
 

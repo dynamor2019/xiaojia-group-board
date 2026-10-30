@@ -16,9 +16,12 @@
 
 原来这套流程在三个地方各丢一次，通知就彻底没了：
 
-    wx_crawl.scan()    纯喊话 → stats["dropped_empty"]，直接 discard
+    wx_crawl.scan()    纯喊话 → 直接 discard（现在记 stats["bare"]，先留着）
     report.collect()   正文长度 < 4 → continue
     （QQ 侧虽然留下来了，但卡片上就一行「@所有人」，看不出是什么事）
+
+现在改法：两侧都**不丢**，只记数（stats["bare"] / collect.dropped[2]），
+由这里尽可能补正文；补不上的才在看板页头合并成一句「N 条只喊了 @所有人…已隐藏」。
 
 为什么往前看不能无脑取上一条
 ----------------------------
