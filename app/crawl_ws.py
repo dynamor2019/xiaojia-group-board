@@ -26,6 +26,7 @@ try:
 except ImportError:  # 老版本
     from websockets.server import serve
 
+import ctx
 import settings
 
 HOST = "127.0.0.1"
@@ -150,9 +151,45 @@ def is_at_all(m: dict) -> bool:
     return "@所有人" in plain_text(segs)
 
 
+def pick_hits(all_msgs: list[dict], floor_ts: int) -> list[dict]:
+    """从按时间正序的消息里挑出 @所有人，并给"纯喊话"补上它的正文。
+
+    单独抽出来是为了能脱机测试：不需要 NapCat 在线也能验这段逻辑。
+    """
+    hits: list[dict] = []
+    used: set = set()                       # 已被用来做正文的消息，不许重复挂
+    for i, it in enumerate(all_msgs):
+        if not it["at"]:
+            continue
+        if floor_ts and it["ts"] <= floor_ts:
+            continue
+        rec = {
+            "time": dt.datetime.fromtimestamp(it["ts"]).strftime("%Y-%m-%d %H:%M"),
+            "sender": it["sender"],
+            "text": it["text"],
+        }
+        if ctx.is_bare(it["text"]):
+            cands = [{"ts": x["ts"], "sender": x["sender"], "display": x["sender"],
+                      "text": x["text"], "key": j}
+                     for j, x in enumerate(all_msgs[max(0, i - 10):i], start=max(0, i - 10))]
+            cands.reverse()                                       # 最近的在最前
+            pick = ctx.pick_context(cands, it["sender"], it["ts"], used=used)
+            if pick:
+                rec["ctx"] = pick["text"]
+                rec["ctx_from"] = ctx.describe(pick)
+                used.add(pick["key"])
+        hits.append(rec)
+    hits.sort(key=lambda x: x["time"])
+    return hits
+
+
 async def crawl_group(gid, name, pages: int, pace: float, floor_ts: int):
-    """只收 time > floor_ts 的；某页整体早于 floor_ts 就停止翻页。"""
-    hits, seen, seq = [], set(), 0
+    """只收 time > floor_ts 的；某页整体早于 floor_ts 就停止翻页。
+
+    注意：整页消息都要留着，不能过滤完就扔 —— 有的群习惯"先发正文、再单独
+    发一条 @所有人"，正文就在紧挨着的前一条里。以前只留命中行，正文白丢了。
+    """
+    seen, seq, batches = set(), 0, []
     for page in range(pages):
         try:
             r = await call("get_group_msg_history",
@@ -165,6 +202,7 @@ async def crawl_group(gid, name, pages: int, pace: float, floor_ts: int):
             break
         new = 0
         oldest = None
+        batch = []
         for m in msgs:
             mid = m.get("message_id") or m.get("msgId")
             if mid in seen:
@@ -174,26 +212,27 @@ async def crawl_group(gid, name, pages: int, pace: float, floor_ts: int):
             ts = int(m.get("time") or 0)
             if oldest is None or ts < oldest:
                 oldest = ts
-            if floor_ts and ts <= floor_ts:
-                continue
-            if is_at_all(m):
-                hits.append({
-                    "time": dt.datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M"),
-                    "sender": (m.get("sender") or {}).get("card")
-                              or (m.get("sender") or {}).get("nickname")
-                              or str(m.get("user_id") or ""),
-                    "text": plain_text(m.get("message")),
-                })
+            batch.append({
+                "ts": ts,
+                "sender": (m.get("sender") or {}).get("card")
+                          or (m.get("sender") or {}).get("nickname")
+                          or str(m.get("user_id") or ""),
+                "text": plain_text(m.get("message")),
+                "at": is_at_all(m),
+            })
         if new == 0:
             break
+        batches.append(batch)
         if floor_ts and oldest is not None and oldest <= floor_ts:
             break  # 已经翻到上次抓过的位置，后面都是旧的
         seq = msgs[0].get("message_seq") or msgs[0].get("message_id") or 0
         if not seq:
             break
         await asyncio.sleep(pace)
-    hits.sort(key=lambda x: x["time"])
-    return hits
+
+    # 翻页是"从新往旧"，按页倒过来拼才是时间正序
+    all_msgs = [x for b in reversed(batches) for x in b]
+    return pick_hits(all_msgs, floor_ts)
 
 
 async def main_async(args):

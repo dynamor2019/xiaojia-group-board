@@ -26,6 +26,7 @@ import time
 from datetime import datetime, date
 from pathlib import Path
 
+import ctx
 import settings
 
 HERE = Path(__file__).resolve().parent
@@ -98,6 +99,28 @@ def strip_keywords(text: str) -> str:
     return out.strip(" \u2005\u3000\r\n\t，,。:：")
 
 
+def _look_back(con, tbl: str, sort_seq, ts, sender, people, used=None) -> dict | None:
+    """纯喊话时，往回找一条"正文"。
+
+    必须按 sort_seq 而不是 local_id：微信回填历史时是"老的先入库、新的后入库"
+    的反向插入，local_id 几乎完全是倒序的（实测 23 行里 22 个逆序点），
+    照 local_id 取"上一条"会取到更晚的消息。sort_seq 是真正的会话顺序。
+    """
+    try:
+        prev = con.execute(
+            f'SELECT sort_seq, create_time, real_sender_id, message_content FROM "{tbl}" '
+            f'WHERE sort_seq < ? AND local_type = 1 AND WCDB_CT_message_content = 0 '
+            f'ORDER BY sort_seq DESC LIMIT 10', (sort_seq,)).fetchall()
+    except sqlite3.Error:
+        return None
+    cands = []
+    for pseq, pts, _psid, pcontent in prev:
+        psender, ptext = parse_group_content(pcontent)
+        cands.append({"ts": pts, "sender": psender, "key": pseq,
+                      "display": people.get(psender, psender), "text": ptext})
+    return ctx.pick_context(cands, sender, ts, used=used)
+
+
 def scan(days: int = 30) -> tuple[dict, dict]:
     names, hash2gid, people = load_groups()
     cutoff = time.time() - days * 86400
@@ -113,7 +136,7 @@ def scan(days: int = 30) -> tuple[dict, dict]:
 
     result: dict[str, list] = {}
     stats = {"groups_scanned": 0, "tables": 0, "rows_read": 0,
-             "hits": 0, "dropped_empty": 0, "skipped_muted": 0}
+             "hits": 0, "bare": 0, "skipped_muted": 0}
     _skipped_seen: set[str] = set()
 
     for db_path in sorted(DECRYPTED.glob("message/message_*.db")):
@@ -134,8 +157,9 @@ def scan(days: int = 30) -> tuple[dict, dict]:
                 _skipped_seen.add(gid)
                 continue
             stats["tables"] += 1
+            used_seq: set = set()      # 一段正文只能解释一条喊话
             sql = (
-                f'SELECT create_time, real_sender_id, message_content '
+                f'SELECT sort_seq, create_time, real_sender_id, message_content '
                 f'FROM "{tbl}" '
                 f'WHERE create_time >= ? AND local_type = 1 '
                 f'AND WCDB_CT_message_content = 0 '
@@ -156,19 +180,26 @@ def scan(days: int = 30) -> tuple[dict, dict]:
             stats["rows_read"] += len(rows)
             label = f"{names.get(gid, gid)} ({gid})"
             bucket = result.setdefault(label, [])
-            for ts, _sid, content in rows:
+            for sseq, ts, _sid, content in rows:
                 sender, text = parse_group_content(content)
                 if not any(k in text for k in KEYWORDS):
                     continue
-                if not strip_keywords(text):
-                    stats["dropped_empty"] += 1
-                    continue
                 sender_disp = people.get(sender, sender)
-                bucket.append({
+                item = {
                     "time": datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M"),
                     "sender": sender_disp,
                     "text": text.strip(),
-                })
+                }
+                if ctx.is_bare(item["text"]):
+                    # 先发正文、再单独 @所有人 —— 正文在上一条里，捞回来
+                    pick = _look_back(con, tbl, sseq, ts, sender, people, used_seq)
+                    if pick:
+                        item["ctx"] = pick["text"]
+                        item["ctx_from"] = ctx.describe(pick)
+                        used_seq.add(pick["key"])
+                    else:
+                        stats["bare"] += 1        # 找不到正文，交给看板决定怎么处理
+                bucket.append(item)
                 stats["hits"] += 1
         con.close()
 
@@ -218,7 +249,8 @@ def main() -> int:
     out_json, out_md = write_outputs(data, days)
 
     log(f"[微信] {stats['tables']} 个会话表 / 命中 {stats['groups_scanned']} 个群 / "
-        f"{stats['hits']} 条 @所有人（另有 {stats['dropped_empty']} 条空喊话已丢弃，"
+        f"{stats['hits']} 条 @所有人"
+        f"（其中 {stats['bare']} 条只有 @所有人、且上文里找不到正文；"
         f"跳过 {stats['skipped_muted']} 个已取消关注的群）")
     log(f"[微信] 输出 → {out_json.name} , {out_md.name}")
     return 0

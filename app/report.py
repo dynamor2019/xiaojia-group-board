@@ -24,6 +24,7 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
+import ctx
 import settings
 
 BASE = Path(__file__).resolve().parent
@@ -72,7 +73,7 @@ def collect(today: date, days: int = 30, sources=None) -> list[dict]:
             sources.append((wx, "微信"))
 
     rows: list[dict] = []
-    dropped_old = dropped_expired = 0
+    dropped_old = dropped_expired = dropped_bare = 0
     for path, label in sources:
         path = Path(path)
         if not path.exists():
@@ -90,11 +91,14 @@ def collect(today: date, days: int = 30, sources=None) -> list[dict]:
                 if days and (today - dt.date()).days > days:
                     dropped_old += 1
                     continue                                   # 一个月以前的不展示
-                text = (rec.get("text") or "").replace("「@所有人」", "").strip()
-                text = re.sub(r"\s+", " ", text)
-                if len(text) < 4:                              # 只有「@所有人」没正文
+                raw = (rec.get("text") or "").replace("「@所有人」", "").strip()
+                text = re.sub(r"\s+", " ", raw)
+                ctx_text = re.sub(r"\s+", " ", (rec.get("ctx") or "").strip())
+                if not ctx.body_of(text) and not ctx_text:
+                    dropped_bare += 1                          # 只喊了 @所有人，上文也找不到
                     continue
-                dls = [d for d in extract_deadlines(text, dt.date()) if d >= dt.date()]
+                analysis = ctx_text or text
+                dls = [d for d in extract_deadlines(analysis, dt.date()) if d >= dt.date()]
                 dl = dls[-1].isoformat() if dls else None
                 if dl and date.fromisoformat(dl) < today:
                     dropped_expired += 1
@@ -105,10 +109,12 @@ def collect(today: date, days: int = 30, sources=None) -> list[dict]:
                         "gid": gid,
                         "t": rec["time"],
                         "s": rec.get("sender", ""),
-                        "x": text,
+                        "x": text if ctx.body_of(text) else "",
+                        "c": ctx_text,
+                        "cf": rec.get("ctx_from", ""),
                         "d": dl,
                         "n": (date.fromisoformat(dl) - today).days if dl else None,
-                        "k": topic_of(text),
+                        "k": topic_of(analysis),
                         "src": label,
                     }
                 )
@@ -123,7 +129,7 @@ def collect(today: date, days: int = 30, sources=None) -> list[dict]:
         seen[base] = n + 1
         r["i"] = base if n == 0 else f"{base}-{n}"
 
-    collect.dropped = (dropped_old, dropped_expired)
+    collect.dropped = (dropped_old, dropped_expired, dropped_bare)
     return rows
 
 
@@ -262,6 +268,12 @@ main{padding:18px 26px 60px}
 .msg-h b{color:#374151;font-weight:600;font-size:11.5px}
 .msg-h .btn-done{margin-left:auto}
 .msg-x{font-size:12.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+/* 「先发正文、再单独 @所有人」的补全：正文是从上文捞回来的，得让人看得出来 */
+.msg-c{margin-top:3px;padding:5px 8px;border-left:2px solid #cbd5e1;border-radius:0 4px 4px 0;
+     background:#f8fafc;color:#4b5563;font-size:12px;line-height:1.6;
+     white-space:pre-wrap;word-break:break-word}
+.msg-c span{display:block;margin-top:2px;color:#9aa3b2;font-size:10.5px}
+.msg-cf{margin-top:3px;color:#9aa3b2;font-size:10.5px}
 .msg.done{opacity:.45}
 .msg.done .msg-x{text-decoration:line-through;text-decoration-color:#9ca3af}
 .tag{font-size:10px;padding:1px 6px;border-radius:4px;background:#f3f4f6;color:#4b5563}
@@ -515,7 +527,7 @@ function cardHTML(r) {
   return '<div class="card ' + cls + '">' +
     '<div class="card-h"><span class="badge">' + esc(r.k) + '</span>' +
       '<span class="dl">' + r.d.slice(5) + ' · ' + when + '</span></div>' +
-    '<div class="card-t">' + esc(r.x.slice(0, 260)) + '</div>' +
+    '<div class="card-t">' + esc((r.x || r.c || '').slice(0, 260)) + '</div>' +
     '<div class="card-f"><span class="who">' + esc(r.g) + ' ｜ ' + esc(r.s) + '</span>' +
       btnHTML(r.i) + '</div></div>';
 }
@@ -524,13 +536,19 @@ function groupHTML(g, rs, qs) {
   const last = rs.reduce((m, r) => r.t > m ? r.t : m, '');
   const src = rs[0].src || 'QQ', gid = rs[0].gid || '';
   const open = (qs.length || onlyTodo.checked || gsel.value || hideDone.checked) ? ' open' : '';
-  const body = rs.map(r =>
-    '<div class="msg' + (done.has(r.i) ? ' done' : '') + '">' +
+  const body = rs.map(r => {
+    const main = r.x || r.c || '';
+    const extra = (r.x && r.c)
+      ? '<div class="msg-c">↑ 上文：' + hl(r.c, qs) + '<span>' + esc(r.cf) + '</span></div>'
+      : ((!r.x && r.c) ? '<div class="msg-cf">↑ 这条只发了 @所有人，正文取自上文 · ' +
+                          esc(r.cf) + '</div>' : '');
+    return '<div class="msg' + (done.has(r.i) ? ' done' : '') + '">' +
       '<div class="msg-h"><b>' + esc(r.s || '未知') + '</b><span>' + r.t + '</span>' +
         '<span class="tag">' + r.k + '</span>' +
         (r.d ? '<span class="dtag">截止 ' + r.d + '</span>' : '') +
         btnHTML(r.i) + '</div>' +
-      '<div class="msg-x">' + hl(r.x, qs) + '</div></div>').join('');
+      '<div class="msg-x">' + hl(main, qs) + '</div>' + extra + '</div>';
+  }).join('');
   return '<details class="grp"' + open + '><summary>' +
     '<span class="gname">' + esc(g) + '</span>' +
     '<span class="gmeta">' + rs.length + ' 条 · 最新 ' + last.slice(0, 10) + '</span>' +
@@ -550,7 +568,7 @@ function renderCol(src, qs, gv, ot, hd) {
       if (ot && !r.d) return false;
       if (hd && done.has(r.i)) return false;
       if (qs.length) {
-        const hay = (r.x + ' ' + r.s + ' ' + r.g + ' ' + r.k).toLowerCase();
+        const hay = (r.x + ' ' + (r.c || '') + ' ' + r.s + ' ' + r.g + ' ' + r.k).toLowerCase();
         if (!qs.every(t => hay.includes(t))) return false;
       }
       return true;
@@ -809,7 +827,17 @@ if (!SERVED) {
 def build(today: date, days: int = 30, sources=None,
           served: bool = False, demo: bool = False) -> str:
     rows = collect(today, days, sources)
-    n_old, n_exp = getattr(collect, "dropped", (0, 0))
+    dropped = getattr(collect, "dropped", (0, 0, 0))
+    n_old, n_exp = dropped[0], dropped[1]
+    n_bare = dropped[2] if len(dropped) > 2 else 0
+    hide_parts = []
+    if n_old:
+        hide_parts.append(f"{n_old} 条超过 {days} 天")
+    if n_exp:
+        hide_parts.append(f"{n_exp} 条已过期")
+    if n_bare:
+        hide_parts.append(f"{n_bare} 条只喊了 @所有人、上文也找不到正文")
+    dropped_txt = ("，".join(hide_parts) + "，已隐藏") if hide_parts else ""
     groups: dict[str, dict] = {}
     for r in rows:
         c = groups.setdefault(r["g"], {"gid": r["gid"], "n": 0, "last": ""})
@@ -832,7 +860,7 @@ def build(today: date, days: int = 30, sources=None,
         "%%TODAY%%": f"{today:%Y-%m-%d}",
         "%%NOW%%": f"{datetime.now():%Y-%m-%d %H:%M}",
         "%%DAYS%%": str(days) if days else "不限",
-        "%%DROPPED%%": f"{n_old} 条超过 {days} 天、{n_exp} 条已过期，已隐藏",
+        "%%DROPPED%%": dropped_txt,
         "%%TOTAL%%": str(len(rows)),
         "%%GN%%": str(len(groups)),
         "%%SOON%%": str(soon),

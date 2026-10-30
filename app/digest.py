@@ -14,6 +14,7 @@ import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import ctx
 import settings
 
 BASE = Path(__file__).resolve().parent
@@ -211,10 +212,12 @@ def load():
                 dt = datetime.strptime(rec["time"], "%Y-%m-%d %H:%M")
             except (ValueError, KeyError):
                 continue
-            text = (rec.get("text") or "").replace("「@所有人」", "").strip()
-            text = re.sub(r"\s+", " ", text)
-            if len(text) < 4:  # 只有「@所有人」三个字，没正文，跳过
-                continue
+            raw = (rec.get("text") or "").replace("「@所有人」", "").strip()
+            text = re.sub(r"\s+", " ", raw)
+            ctx_text = re.sub(r"\s+", " ", (rec.get("ctx") or "").strip())
+            if not ctx.body_of(text) and not ctx_text:
+                continue                                   # 只喊了 @所有人，上文也找不到
+            text = ctx_text or text                        # 正文在上文里就用上文
             dls = extract_deadlines(text, dt.date())
             future = [d for d in dls if d >= dt.date()]
             dl = future[-1] if future else None  # 取最晚的那个当"最终截止"
