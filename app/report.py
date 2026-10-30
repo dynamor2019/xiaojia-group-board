@@ -6,9 +6,11 @@
 
 「已完成」状态的持久化
 ----------------------
-同时写 localStorage 和 cookie（cookie 用 path=/，跨端口有效），
-因为预览面板每次的 127.0.0.1:<随机端口> 会换源，单靠 localStorage 会丢。
-两处取并集读、两处都写，任一处可用就不会丢。
+服务在跑时以 data/board_state.json 为唯一真相；直接双击打开 HTML（没有服务）时
+退回 localStorage + cookie（cookie 用 path=/，跨端口有效），因为预览面板每次的
+127.0.0.1:<随机端口> 会换源，单靠 localStorage 会丢。
+
+标记过「完成」的，重出看板时直接不写进 HTML —— 见 collect() 里的 done 过滤。
 
 模板用 %%占位符%% 替换，避免 f-string 与 CSS、JS 大括号互相打架。
 """
@@ -26,6 +28,7 @@ from pathlib import Path
 
 import ctx
 import settings
+from version import __version__ as VERSION
 
 BASE = Path(__file__).resolve().parent
 DATA = settings.data_dir()
@@ -129,7 +132,24 @@ def collect(today: date, days: int = 30, sources=None) -> list[dict]:
         seen[base] = n + 1
         r["i"] = base if n == 0 else f"{base}-{n}"
 
-    collect.dropped = (dropped_old, dropped_expired, dropped_bare)
+    # 已标记「完成」的，重出看板时直接不进去（点一次完成、刷新一次就收起来）。
+    # 注意：id 必须在这之后才算得出来，所以只能先算 id 再筛。
+    try:
+        import board_state
+        done_ids = set(board_state.load().get("done") or [])
+    except Exception:
+        done_ids = set()
+    dropped_done = 0
+    if done_ids:
+        kept = []
+        for r in rows:
+            if r["i"] in done_ids:
+                dropped_done += 1
+            else:
+                kept.append(r)
+        rows = kept
+
+    collect.dropped = (dropped_old, dropped_expired, dropped_bare, dropped_done)
     return rows
 
 
@@ -212,6 +232,45 @@ label.chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:va
 .demobar a{margin-left:auto;color:#92400e;font-weight:600;text-decoration:none}
 .demobar a:hover{text-decoration:underline}
 .saver.bad{color:#92400e;background:#fffbeb;border-color:#fcd34d}
+
+/* ---- 更新提示条 ---- */
+.updbar{background:linear-gradient(90deg,#0f766e,#0d9488);color:#fff;
+  font-size:12.5px;padding:8px 26px;display:none;gap:10px;align-items:center}
+.updbar.show{display:flex}
+.updbar b{font-weight:650;white-space:nowrap}
+.updbar .ub-ic{display:inline-flex;width:17px;height:17px;border-radius:50%;flex:none;
+  background:rgba(255,255,255,.22);align-items:center;justify-content:center;font-size:11px}
+.updbar .ub-sub{color:#ccfbf1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.updbar .ub-btn{padding:4px 11px;border-radius:7px;border:1px solid rgba(255,255,255,.45);
+  background:transparent;color:#fff;font-size:12px;font-family:inherit;cursor:pointer;flex:none}
+.updbar .ub-btn:hover{background:rgba(255,255,255,.14)}
+.updbar .ub-btn.primary{background:#fff;color:#0f766e;font-weight:600;border-color:#fff}
+.updbar .ub-btn.primary:hover{background:#f0fdfa}
+.updbar .ub-x{margin-left:auto;cursor:pointer;opacity:.75;font-size:15px;line-height:1;flex:none}
+.updbar .ub-x:hover{opacity:1}
+
+/* ---- 更新内容弹层 ---- */
+.modal{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:80;
+  display:none;align-items:center;justify-content:center;padding:24px}
+.modal.show{display:flex}
+.modal .mbox{background:#fff;border-radius:14px;width:min(620px,100%);max-height:78vh;
+  display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 64px rgba(15,23,42,.3)}
+.modal .mh{display:flex;align-items:center;gap:8px;padding:14px 18px;font-size:14px;
+  border-bottom:1px solid var(--line)}
+.modal .mh span{margin-left:auto;cursor:pointer;color:var(--tx2);font-size:16px;line-height:1}
+.modal .mb{padding:12px 18px;overflow:auto;font-size:13px;line-height:1.7}
+.modal .mb .row{padding:7px 0;border-bottom:1px dashed var(--line);display:flex;gap:10px}
+.modal .mb .row:last-child{border-bottom:0}
+.modal .mb .cd{color:var(--tx2);font-size:11.5px;flex:none;width:78px;padding-top:2px}
+.modal .mb .cm{flex:1;min-width:0;word-break:break-word}
+.modal .mf{padding:11px 18px;border-top:1px solid var(--line);display:flex;
+  gap:10px;align-items:center}
+.modal .mf a{color:var(--ac);font-size:12.5px;text-decoration:none}
+.modal .mf a:hover{text-decoration:underline}
+.modal .mf .ub-btn{margin-left:auto;padding:6px 14px;border-radius:8px;font-size:13px;
+  border:1px solid var(--line);background:#fff;color:var(--tx);font-family:inherit;cursor:pointer}
+.modal .mf .ub-btn.primary{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+.ver{color:var(--tx2);font-size:11.5px}
 
 /* —— 两列 —— */
 main{padding:18px 26px 60px}
@@ -330,6 +389,14 @@ mark{background:#fff3a3;padding:0 1px;border-radius:2px}
 }
 </style></head><body>
 %%DEMOBAR%%
+<div class="updbar" id="updbar">
+  <span class="ub-ic">↑</span>
+  <b>有新版本</b>
+  <span class="ub-sub" id="updSub"></span>
+  <button class="ub-btn" id="updWhat">更新了什么</button>
+  <button class="ub-btn primary" id="updGo">立即更新</button>
+  <span class="ub-x" id="updSkip" title="这次不提醒">✕</span>
+</div>
 <header>
   <div class="brand">
     <img src="%%LOGO%%" alt="小贾">
@@ -347,7 +414,7 @@ mark{background:#fff3a3;padding:0 1px;border-radius:2px}
     <div class="stat"><b>%%TOTAL%%</b><span>@所有人 消息</span></div>
     <div class="stat"><b>%%GN%%</b><span>有喊话的群</span></div>
     <div class="stat"><b style="color:var(--hot)">%%SOON%%</b><span>14 天内到期</span></div>
-    <div class="stat"><b id="doneN" style="color:var(--ok)">0</b><span>已完成</span></div>
+    <div class="stat" title="标记过「完成」的都收起来了，点条目的「完成」按钮可标记"><b id="doneN" style="color:var(--ok)">0</b><span>已完成</span></div>
   </div>
   <div class="bar">
     <input type="search" id="q" placeholder="搜内容 / 发件人 / 群名，空格分隔多个词">
@@ -384,10 +451,21 @@ mark{background:#fff3a3;padding:0 1px;border-radius:2px}
 </main>
 
 <footer class="foot" id="foot">
-  <span>数据只在你本机 · 关掉这个页面不会停服务</span>
+  <span>数据只在你本机 · 关掉这个页面不会停服务 · <span class="ver">v%%VERSION%%</span></span>
   <span class="sp">|</span>
   <a id="btnQuit">停止看板服务</a>
 </footer>
+
+<div class="modal" id="updModal">
+  <div class="mbox">
+    <div class="mh"><b>更新内容</b><span id="updClose">✕</span></div>
+    <div class="mb" id="updList"></div>
+    <div class="mf">
+      <a id="updGit" target="_blank" rel="noopener">在 GitHub 上看 →</a>
+      <button class="ub-btn primary" id="updGo2">立即更新</button>
+    </div>
+  </div>
+</div>
 
 <div class="console" id="console">
   <div class="ch"><span class="dot" id="cDot"></span><span id="cTitle">输出</span>
@@ -436,10 +514,14 @@ let done = new Set(%%DONE%% || []);
 let muted = new Map();
 (%%MUTED%% || []).forEach(m => muted.set(m.src + '|' + m.gid, m));
 
-if (lsOK) {
-  try { (JSON.parse(localStorage.getItem(KEY) || '[]') || []).forEach(x => done.add(x)); } catch (e) {}
+/* 服务在跑的时候，data/board_state.json 就是唯一真相，不再合并浏览器里的旧标记
+   —— 否则「重置已完成」清完，本机残留的 id 又会被合回来，标过的条目反而一直显示成划掉。 */
+if (!SERVED) {
+  if (lsOK) {
+    try { (JSON.parse(localStorage.getItem(KEY) || '[]') || []).forEach(x => done.add(x)); } catch (e) {}
+  }
+  readCookie().forEach(x => done.add(x));
 }
-readCookie().forEach(x => done.add(x));
 ckOK = writeCookie([...done]);
 
 function refreshSaver() {
@@ -589,8 +671,9 @@ function renderCol(src, qs, gv, ot, hd) {
     ? order.map(g => groupHTML(g, buckets.get(g), qs)).join('')
     : '<div class="col-none">' + (
         DATA.length ? '没有匹配的记录'
+        : (done.size ? '这一侧都标记成「完成」了 —— 点右上角「重置已完成」再刷新，就回来了'
         : (SERVED ? '还没有数据 —— 点右上角「刷新数据」抓一次'
-                  : '还没有数据 —— 双击「启动看板.cmd」后点「刷新数据」')
+                  : '还没有数据 —— 双击「启动看板.cmd」后点「刷新数据」'))
       ) + '</div>';
 
   const nEl = document.getElementById('n' + sfx);
@@ -604,9 +687,8 @@ function render() {
   const gv = gsel.value, ot = onlyTodo.checked, hd = hideDone.checked;
   renderCol('QQ', qs, gv, ot, hd);
   renderCol('微信', qs, gv, ot, hd);
-  let hit = 0;
-  for (const r of DATA) if (done.has(r.i)) hit++;
-  doneN.textContent = hit;
+  /* 标记过的都算「已完成」，哪怕它已经被收起来（DATA 里已经没有它了） */
+  doneN.textContent = done.size;
 }
 
 document.addEventListener('click', e => {
@@ -637,7 +719,7 @@ document.addEventListener('click', e => {
 
 document.getElementById('resetDone').addEventListener('click', () => {
   if (!done.size) return;
-  if (!confirm('清除全部 ' + done.size + ' 条「已完成」标记？')) return;
+  if (!confirm('清除全部 ' + done.size + ' 条「已完成」标记？\\n\\n清完点「刷新数据」，它们会重新出现在看板上。')) return;
   done.clear(); save(); render();
 });
 
@@ -819,6 +901,106 @@ if (!SERVED) {
     if (!d.ok) renderDoctor(d);
   }).catch(() => {});
 }
+
+/* ---------- 更新提示（每天一次心跳，结果由服务端缓存） ---------- */
+const updbar = document.getElementById('updbar');
+const updModal = document.getElementById('updModal');
+const updList = document.getElementById('updList');
+let UPD = null, updTimer = null;
+
+function updModalShow(on) { updModal.classList.toggle('show', !!on); }
+
+function updRender() {
+  if (!UPD || !UPD.notes) return;
+  updList.innerHTML = UPD.notes.map(n =>
+    '<div class="row"><div class="cd">' + esc(n.date || '') + '</div>' +
+    '<div class="cm">' + esc(n.msg || '') + '</div></div>').join('')
+    || '<div class="row"><div class="cm">这次没有提交说明，直接更新就行。</div></div>';
+  document.getElementById('updGit').href = UPD.url || '#';
+}
+
+function updLoad(force) {
+  if (!SERVED || DEMO) return;
+  fetch('/api/update' + (force ? '?force=1' : ''))
+    .then(r => r.json()).then(d => {
+      UPD = d;
+      if (d.has_update) {
+        document.getElementById('updSub').textContent =
+          '远端 ' + d.latest + (d.latest_date ? ' · ' + d.latest_date : '') +
+          '，你这里是 ' + (d.version || '') + '（' + d.current + '）';
+        updbar.classList.add('show');
+        updRender();
+      } else {
+        updbar.classList.remove('show');
+      }
+    }).catch(() => {});
+}
+
+function updApply() {
+  updModalShow(false);
+  if (!confirm('现在更新到最新版？\\n\\n只覆盖程序文件，config.json、data/、napcat/ 都不会动。\\n更完会自动重启看板。')) return;
+  conClear();
+  conShow('正在更新…', true);
+  fetch('/api/update/apply', { method: 'POST' }).then(r => r.json()).then(x => {
+    if (!x.ok) conLine('已经有一个更新在跑了，等它结束。', '#fcd34d');
+    updPoll();
+    updTimer = setInterval(updPoll, 700);
+  }).catch(() => conShow('更新接口不可用（是不是直接双击打开了 html？）', false));
+}
+
+function updPoll() {
+  fetch('/api/update/apply').then(r => r.json()).then(s => {
+    conClear();
+    (s.lines || []).forEach(l => {
+      let c = '#cbd5e1';
+      if (l.indexOf('失败') >= 0 || l.indexOf('没成功') >= 0) c = '#fca5a5';
+      else if (l.indexOf('已更新') >= 0 || l.indexOf('完成') >= 0) c = '#86efac';
+      else if (l.indexOf('下载') >= 0 || l.indexOf('覆盖') >= 0) c = '#93c5fd';
+      conLine(l, c);
+    });
+    if (s.running) { conShow('正在更新…', true); return; }
+    if (updTimer) { clearInterval(updTimer); updTimer = null; }
+    if (s.result && s.result.ok) {
+      conShow('更新完成，正在重启看板…', false);
+      restartBoard();
+    } else {
+      conShow('更新失败', false);
+      if (s.result && s.result.error) conLine('   ' + s.result.error, '#fca5a5');
+      conLine('   也可以手动处理：' + (UPD ? UPD.url : ''), '#7dd3fc');
+    }
+  }).catch(() => { if (updTimer) { clearInterval(updTimer); updTimer = null; } });
+}
+
+function restartBoard() {
+  conShow('正在重启看板…', true);
+  fetch('/api/restart', { method: 'POST' }).catch(() => {});
+  let n = 0;
+  const t = setInterval(() => {
+    n++;
+    if (n > 45) {
+      clearInterval(t);
+      conShow('重启超时了，请双击「启动看板.cmd」', false);
+      return;
+    }
+    fetch('/api/health').then(r => r.json()).then(() => {
+      clearInterval(t);
+      location.reload();
+    }).catch(() => {});
+  }, 700);
+}
+
+if (updbar) {
+  document.getElementById('updWhat').onclick = () => { updModalShow(true); updRender(); };
+  document.getElementById('updClose').onclick = () => updModalShow(false);
+  updModal.onclick = e => { if (e.target === updModal) updModalShow(false); };
+  document.getElementById('updGo').onclick = updApply;
+  document.getElementById('updGo2').onclick = updApply;
+  document.getElementById('updSkip').onclick = () => {
+    updbar.classList.remove('show');
+    fetch('/api/update/ignore', { method: 'POST' }).catch(() => {});
+  };
+  setTimeout(() => updLoad(false), 1200);
+}
 </script>
 </body></html>"""
 
@@ -830,7 +1012,10 @@ def build(today: date, days: int = 30, sources=None,
     dropped = getattr(collect, "dropped", (0, 0, 0))
     n_old, n_exp = dropped[0], dropped[1]
     n_bare = dropped[2] if len(dropped) > 2 else 0
+    n_done = dropped[3] if len(dropped) > 3 else 0
     hide_parts = []
+    if n_done:
+        hide_parts.append(f"{n_done} 条已标记完成")
     if n_old:
         hide_parts.append(f"{n_old} 条超过 {days} 天")
     if n_exp:
@@ -870,6 +1055,7 @@ def build(today: date, days: int = 30, sources=None,
         "%%MUTED%%": json.dumps(st.get("muted") or [], ensure_ascii=False, separators=(",", ":")),
         "%%SERVED%%": "true" if served else "false",
         "%%DEMO%%": "true" if demo else "false",
+        "%%VERSION%%": VERSION,
         "%%DEMOBAR%%": (
             '<div class="demobar"><b>示例模式</b>　现在显示的是 demo/ 里的假数据，'
             '不会动你的真实群。<a href="/">回到我的看板 →</a></div>'

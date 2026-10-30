@@ -18,6 +18,11 @@
     "port": 8766,
     "open_browser": true
   },
+  "update": {
+    "enabled": true,
+    "hours": 24,
+    "repo": "dynamor2019/xiaojia-group-board"
+  },
   "paths": {
     "data_dir": "",
     "work_dir": ""

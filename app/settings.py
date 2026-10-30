@@ -42,6 +42,11 @@ DEFAULTS: dict = {
         "port": 8766,
         "open_browser": True,
     },
+    "update": {
+        "enabled": True,             # 每天问一次 GitHub 有没有新版本
+        "hours": 24,                 # 心跳间隔（小时）
+        "repo": "dynamor2019/xiaojia-group-board",
+    },
     "paths": {
         "data_dir": "",              # 抓取结果放哪；留空=data/
         "work_dir": "",              # 解密中间产物放哪；留空=app/vendor/wcdb-key-tool/

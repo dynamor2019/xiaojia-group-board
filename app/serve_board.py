@@ -19,6 +19,11 @@ data/board_state.json，爬虫下次才能跳过它 —— 所以需要一个极
     GET  /api/refresh     抓取进度
     POST /api/napcat      下载 NapCat
     GET  /api/napcat      下载进度
+    POST /api/update/apply  开始更新到 GitHub 最新版
+    GET  /api/update/apply  更新进度
+    GET  /api/update      有没有新版本（默认走 24 小时缓存，?force=1 强制联网）
+    POST /api/update/ignore 这次不提醒
+    POST /api/restart     重启自己（更新完换上新代码）
     POST /api/quit        停掉这个服务
     GET  /api/health      存活探针
 """
@@ -41,6 +46,7 @@ sys.path.insert(0, str(APP_DIR))
 
 import board_state  # noqa: E402
 import settings  # noqa: E402
+import update_check  # noqa: E402
 
 DEFAULT_PORT = int(settings.get("board", "port", 8766))
 
@@ -158,6 +164,95 @@ def _child_env() -> dict:
 
 
 JOB = RefreshJob()
+
+
+# ------------------------------------------------------------------ 更新任务
+class UpdateJob:
+    """更新到 GitHub 最新版。git pull 或整包覆盖都在后台跑，日志照样吐给前端。"""
+
+    def __init__(self) -> None:
+        self.lines: list[str] = []
+        self.running = False
+        self.result: dict | None = None
+        self._lock = threading.Lock()
+
+    def add(self, text: str) -> None:
+        with self._lock:
+            for ln in str(text).splitlines():
+                if ln.strip():
+                    self.lines.append(ln.rstrip())
+            del self.lines[:-300]
+
+    def snapshot(self) -> dict:
+        with self._lock:
+            return {"running": self.running, "lines": list(self.lines),
+                    "result": self.result}
+
+    def start(self) -> bool:
+        if self.running:
+            return False
+        with self._lock:
+            self.lines = []
+        self.result = None
+        self.running = True
+        threading.Thread(target=self._run, daemon=True).start()
+        return True
+
+    def _run(self) -> None:
+        try:
+            self.result = update_check.apply(progress=self.add)
+        except Exception as e:                          # noqa: BLE001
+            self.result = {"ok": False, "error": str(e)[:200]}
+            self.add("出错：" + str(e)[:200])
+        finally:
+            self.running = False
+
+
+UPD = UpdateJob()
+
+_RESTARTING = False
+
+
+def _restart_server() -> None:
+    """把自己关掉，再用同一个端口起一个新的 —— .py 已经换新，不重启还是老代码在跑。"""
+    global _RESTARTING
+    _RESTARTING = True
+    time.sleep(0.4)                      # 先把这次的 HTTP 响应吐干净
+    port = None
+    try:
+        if _HTTPD:
+            port = _HTTPD.server_address[1]
+            _HTTPD.shutdown()
+            _HTTPD.server_close()
+    except Exception:                                   # noqa: BLE001
+        pass
+    time.sleep(1.0)                      # 等端口真的释放，新进程才能抢到同一个号
+    if not port:
+        return
+    flags = 0
+    if os.name == "nt":
+        flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    try:
+        subprocess.Popen(
+            [sys.executable, "-X", "utf8", str(APP_DIR / "serve_board.py"),
+             str(port), "--no-open"],
+            cwd=str(settings.root()), creationflags=flags,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, close_fds=True)
+    except OSError:
+        pass
+
+
+def _heartbeat() -> None:
+    """每天问一次 GitHub。失败不吭声，界面上会显示上次的错误，别打扰用户。"""
+    time.sleep(8)                        # 别和启动抢网络
+    while True:
+        try:
+            if update_check.due():
+                update_check.check()
+        except Exception:                               # noqa: BLE001
+            pass
+        time.sleep(1800)                 # 每半小时看一次"到点没"，真正联网一天一次
 
 # serve_forever 用的实例，main() 里赋值；/api/quit 要靠它停服务
 _HTTPD: "ThreadingHTTPServer | None" = None
@@ -333,6 +428,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, JOB.snapshot())
         elif path == "/api/napcat":
             self._json(200, NAPJOB.snapshot())
+        elif path == "/api/update":
+            self._json(200, update_check.check(force="force=1" in query))
+        elif path == "/api/update/apply":
+            self._json(200, UPD.snapshot())
         elif path == "/api/health":
             st = board_state.load()
             self._json(200, {"ok": True, "done": len(st["done"]),
@@ -363,6 +462,14 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": started, "already": not started})
         elif path == "/api/install":
             self._json(200, install_deps())
+        elif path == "/api/update/apply":
+            started = UPD.start()
+            self._json(200, {"ok": started, "already": not started})
+        elif path == "/api/update/ignore":
+            self._json(200, update_check.ignore())
+        elif path == "/api/restart":
+            self._json(200, {"ok": True})
+            threading.Thread(target=_restart_server, daemon=True).start()
         elif path == "/api/quit":
             self._json(200, {"ok": True})
             threading.Thread(target=_shutdown_server, daemon=True).start()
@@ -414,16 +521,23 @@ def main() -> int:
             webbrowser.open(url)
         except Exception:                               # noqa: BLE001
             pass
+
+    try:                                    # 每天一次 GitHub 心跳，后台跑，不挡界面
+        threading.Thread(target=_heartbeat, daemon=True, name="heartbeat").start()
+    except Exception:                                   # noqa: BLE001
+        pass
+
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("\n已停止")
     finally:
-        httpd.server_close()
-        try:
-            pf.unlink()
-        except OSError:
-            pass
+        if not _RESTARTING:                 # 重启时新进程已经接手，别把它写的端口文件删了
+            httpd.server_close()
+            try:
+                pf.unlink()
+            except OSError:
+                pass
     return 0
 
 
