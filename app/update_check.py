@@ -168,6 +168,17 @@ def git_head() -> str:
         return ""
 
 
+def local_rev() -> str:
+    """当前装的是哪个提交。
+
+    git 工作区里**一律以 HEAD 为准**，不认 updates.json 里记的那个 —— 用户（或者
+    我们）完全可能自己 `git pull`、`git commit` 过，那些都不会经过 apply()。
+    只信记录的话，本地明明是最新的，看板还会天天喊"有新版本"。
+    解压版没有 .git，就只能退回记录值。
+    """
+    return git_head() or str(load().get("installed_sha") or "")
+
+
 # ------------------------------------------------------------------ 检查
 def due() -> bool:
     if not enabled():
@@ -192,7 +203,7 @@ def fetch_commits(n: int = 30) -> list[dict]:
 
 
 def _summary(st: dict, cached: bool = False) -> dict:
-    cur = st.get("installed_sha") or git_head()
+    cur = local_rev()
     head = st.get("remote_sha") or ""
     notes = [n for n in (st.get("notes") or []) if isinstance(n, dict)]
     has = bool(enabled() and cur and head and head != cur and head != st.get("ignored"))
@@ -240,7 +251,7 @@ def check(force: bool = False) -> dict:
         save(st)
         return _summary(st, cached=False)
 
-    cur = st.get("installed_sha") or git_head()
+    cur = local_rev()
     baseline = False
     if not cur:
         # 解压版第一次跑：以远端为基线，别一上来就喊"有更新"
