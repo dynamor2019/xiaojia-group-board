@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -312,6 +313,31 @@ NAPJOB = NapCatJob()
 
 
 # ------------------------------------------------------------------ 体检
+def _ver_pair(text: str) -> tuple[str, int]:
+    """'9.9.36-53644' → ('9.9.36-53644', 53644)。构建号用来比新旧。"""
+    t = (text or "").strip()
+    m = re.search(r"-(\d+)$", t)
+    return t, (int(m.group(1)) if m else 0)
+
+
+def _qq_version() -> tuple[str, int]:
+    """本机 QQ 实际版本。NT 版写在 versions/config.json 的 curVersion 里。"""
+    roots = [Path(settings.qq_exe()).parent, Path(r"C:\Program Files\Tencent\QQNT"),
+             Path(r"C:\Program Files (x86)\Tencent\QQNT")]
+    for base in roots:
+        cfg = base / "versions" / "config.json"
+        if not cfg.exists():
+            continue
+        try:
+            d = json.loads(cfg.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        v = str(d.get("curVersion") or d.get("baseVersion") or "")
+        if v:
+            return _ver_pair(v)
+    return "", 0
+
+
 def doctor() -> dict:
     checks: list[dict] = []
 
@@ -346,6 +372,18 @@ def doctor() -> dict:
         add("QQ 号", bool(uin), uin or "未填 —— 不填就只能手动开 QQ 再抓")
         exe = settings.qq_exe()
         add("QQ.exe", Path(exe).exists(), exe)
+
+        # QQ 版本对不上是「加载失败」最常见的原因，但又不该拦着不让用，所以报 warn
+        qv, qb = _qq_version()
+        if not qv:
+            add("QQ 版本", True, "没读到（QQ 不是 NT 版，或装在非常规路径）")
+        elif qb and qb < 40768:
+            add("QQ 版本", False,
+                f"{qv} 太旧 —— NapCat 要求 QQNT ≥ 9.9.27（构建 40768 以上），"
+                f"请先升级 QQ", "warn")
+        else:
+            add("QQ 版本", True,
+                f"{qv}　（QQ 刚自动升级过、又突然抓不到，先更新 NapCat 再试）")
     else:
         add("QQ 侧", True, "已关闭（config.json: qq.enabled = false）")
 
