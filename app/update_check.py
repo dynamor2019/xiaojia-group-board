@@ -357,6 +357,18 @@ def _changed_files() -> list[str]:
         return []
 
 
+def _same_bytes(a: bytes, b: bytes) -> bool:
+    """内容一样就当一样 —— 忽略 CRLF/LF。
+
+    Windows 上仓库 checkout 出来是 CRLF，zip 包里是 LF，逐字节比会认为"全变了"。
+    真去覆盖的话 git 工作区会莫名其妙变脏，下一次 git pull 反而因为
+    "local changes would be overwritten" 彻底走不通。所以这里必须宽容。
+    """
+    if a == b:
+        return True
+    return a.replace(b"\r\n", b"\n") == b.replace(b"\r\n", b"\n")
+
+
 def _apply_zip(target: str, say) -> dict:
     url = f"https://codeload.github.com/{_repo()}/zip/refs/heads/{BRANCH}"
     say("解压安装（没有 .git），改用整包覆盖 …")
@@ -384,6 +396,7 @@ def _apply_zip(target: str, say) -> dict:
         return {"ok": False, "method": "zip", "error": f"解压失败：{e}"}
 
     n = 0
+    skipped = 0
     changed: list[str] = []
     try:
         for p in src.rglob("*"):
@@ -396,10 +409,16 @@ def _apply_zip(target: str, say) -> dict:
                 continue
             dst = ROOT / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
-            same = dst.exists() and dst.stat().st_size == p.stat().st_size
+            if dst.exists():
+                try:
+                    if _same_bytes(p.read_bytes(), dst.read_bytes()):
+                        skipped += 1
+                        continue
+                except OSError:
+                    pass
             shutil.copy2(p, dst)
             n += 1
-            if not same and len(changed) < 12:
+            if len(changed) < 12:
                 changed.append(str(rel))
     except OSError as e:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -411,7 +430,10 @@ def _apply_zip(target: str, say) -> dict:
     st.update({"installed_sha": target, "remote_sha": target, "notes": [],
                "error": "", "checked_at": time.time(), "ignored": ""})
     save(st)
-    say(f"覆盖了 {n} 个文件")
+    if n:
+        say(f"覆盖了 {n} 个文件（{skipped} 个内容一样，跳过）")
+    else:
+        say(f"文件已经是最新的（比对 {skipped} 个，没有需要覆盖的）")
     return {"ok": True, "method": "zip", "to": target[:8], "restart": True,
             "files": changed, "count": n}
 
