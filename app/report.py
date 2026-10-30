@@ -281,6 +281,48 @@ label.chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:va
 .modal .mf .ub-btn.primary{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
 .ver{color:var(--tx2);font-size:11.5px}
 
+/* ---- 数据源面板 ---- */
+.offtag{font-size:10.5px;padding:1px 7px;border-radius:20px;background:#fef2f2;color:#b91c1c;
+  border:1px solid #fecaca;cursor:pointer;white-space:nowrap;transform:translateY(-1px)}
+.offtag:hover{background:#fee2e2}
+#srcModal .mbox{width:min(660px,100%)}
+.srcblk{border:1px solid var(--line);border-radius:11px;padding:12px 14px;margin-bottom:12px}
+.srcblk.off{background:#fbfbfc;opacity:.62}
+.srcblk .sh{display:flex;align-items:center;gap:9px;margin-bottom:2px}
+.srcblk .sh b{font-size:13.5px}
+.srcblk .sh .st{font-size:11.5px;color:var(--tx2);margin-left:auto;margin-right:2px}
+.srcblk.off .sh .st{color:var(--hot)}
+.srcblk .desc{font-size:11.5px;color:var(--tx2);line-height:1.6;margin:3px 0 9px}
+.fld{display:flex;gap:9px;align-items:center;margin:7px 0 0}
+.fld>label{flex:none;width:64px;font-size:12px;color:var(--tx2)}
+.fld select,.fld input[type=text]{flex:1;min-width:0;font-family:inherit;font-size:12.5px;
+  padding:6px 9px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--tx);
+  outline:none;text-overflow:ellipsis}
+.fld select:focus,.fld input[type=text]:focus{border-color:var(--brand);
+  box-shadow:0 0 0 3px rgba(13,148,136,.12)}
+.fld .mini{flex:none;font-size:11.5px;color:var(--tx2);white-space:nowrap}
+.fld .pick{padding:5px 10px;border-radius:8px;border:1px solid var(--line);background:#fff;
+  color:var(--tx);font-family:inherit;font-size:12px;cursor:pointer;flex:none}
+.fld .pick:hover{border-color:var(--brand);color:var(--brand)}
+/* 开关 */
+.sw{position:relative;display:inline-flex;width:40px;height:22px;flex:none;cursor:pointer}
+.sw input{position:absolute;opacity:0;width:0;height:0}
+.sw i{position:absolute;inset:0;background:#cbd5e1;border-radius:22px;transition:background .18s}
+.sw i::after{content:'';position:absolute;left:2px;top:2px;width:18px;height:18px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.28);transition:transform .18s}
+.sw input:checked+i{background:var(--brand)}
+.sw input:checked+i::after{transform:translateX(18px)}
+.sw input:focus-visible+i{box-shadow:0 0 0 3px rgba(13,148,136,.22)}
+.srchint{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:9px;
+  padding:9px 12px;font-size:12.5px;line-height:1.65;margin-bottom:12px}
+.srchint b{display:block;margin-bottom:2px}
+.srchint .h{display:flex;gap:6px}
+.srchint .h::before{content:'·';flex:none}
+.srcmsg{font-size:12px;border-radius:8px;padding:8px 11px;margin-top:2px;display:none}
+.srcmsg.show{display:block}
+.srcmsg.ok{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0}
+.srcmsg.err{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+
 /* —— 两列 —— */
 main{padding:18px 26px 60px}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
@@ -422,6 +464,7 @@ mark{background:#fff3a3;padding:0 1px;border-radius:2px}
     </div>
     <div class="acts" id="acts">
       <button class="btn-act primary" id="btnRefresh">↻ 刷新数据</button>
+      <button class="btn-act" id="btnSrc">数据源</button>
       <button class="btn-act" id="btnDoctor">环境体检</button>
       <button class="btn-act" id="btnDemo">看示例</button>
     </div>
@@ -453,12 +496,14 @@ mark{background:#fff3a3;padding:0 1px;border-radius:2px}
   <div class="cols">
     <section class="col" id="colQQ">
       <div class="col-h"><span class="src bqq">QQ</span><span class="ttl">QQ 群</span>
+        <span class="offtag" id="offQQ" style="display:none">读取已关闭</span>
         <span class="n" id="nQQ"></span></div>
       <div class="cards" id="soonQQ"></div>
       <div id="listQQ"></div>
     </section>
     <section class="col" id="colWX">
       <div class="col-h"><span class="src bwx">微信</span><span class="ttl">微信群</span>
+        <span class="offtag" id="offWX" style="display:none">读取已关闭</span>
         <span class="n" id="nWX"></span></div>
       <div class="cards" id="soonWX"></div>
       <div id="listWX"></div>
@@ -471,6 +516,62 @@ mark{background:#fff3a3;padding:0 1px;border-radius:2px}
   <span class="sp">|</span>
   <a id="btnQuit">停止看板服务</a>
 </footer>
+
+<div class="modal" id="srcModal">
+  <div class="mbox">
+    <div class="mh"><b>数据源</b><span id="srcClose">✕</span></div>
+    <div class="mb">
+      <div class="srchint" id="srcHint" style="display:none"></div>
+
+      <div class="srcblk" id="blkQQ">
+        <div class="sh">
+          <label class="sw"><input type="checkbox" id="qqOn"><i></i></label>
+          <b>QQ 群</b>
+          <span class="st" id="qqSt">已开启</span>
+        </div>
+        <div class="desc">靠 NapCat 读本机 QQ 的消息。关掉就完全不碰 QQ —— 觉得有风险时用这个。</div>
+        <div class="fld">
+          <label>QQ 程序</label>
+          <select id="qqExe"></select>
+          <button class="pick" id="qqExePick" title="手动选 QQ.exe">选…</button>
+        </div>
+        <div class="fld">
+          <label>用哪个号</label>
+          <select id="qqUin"></select>
+        </div>
+      </div>
+
+      <div class="srcblk" id="blkWX">
+        <div class="sh">
+          <label class="sw"><input type="checkbox" id="wxOn"><i></i></label>
+          <b>微信</b>
+          <span class="st" id="wxSt">已开启</span>
+        </div>
+        <div class="desc">直接从本机微信数据库解密读群消息，不登录第三方、不走网络。</div>
+        <div class="fld">
+          <label>用哪个号</label>
+          <select id="wxDir"></select>
+          <button class="pick" id="wxDirPick" title="手动选数据目录">选…</button>
+        </div>
+        <div class="fld">
+          <label>实际路径</label>
+          <input type="text" id="wxPathShow" readonly placeholder="（还没选）">
+        </div>
+      </div>
+
+      <div class="srcmsg" id="srcMsg"></div>
+      <div style="font-size:11.5px;color:var(--tx2);line-height:1.7;margin-top:4px">
+        改完点「保存」，再点一次 <b>↻ 刷新数据</b> 才会按新设置去读。<br>
+        这些设置写在本机 <code>config.json</code> 里，不上传。
+      </div>
+    </div>
+    <div class="mf">
+      <a href="#" id="srcOpenCfg" style="display:none"></a>
+      <button class="ub-btn" id="srcCancel">取消</button>
+      <button class="ub-btn primary" id="srcSave">保存</button>
+    </div>
+  </div>
+</div>
 
 <div class="modal" id="updModal">
   <div class="mbox">
@@ -492,6 +593,7 @@ mark{background:#fff3a3;padding:0 1px;border-radius:2px}
 const DATA = %%DATA%%;
 const GROUPS = %%GROUPSJSON%%;
 const SHADOW = %%SHADOW%%;
+const SRCOFF = %%SRCOFF%%;
 const SERVED = %%SERVED%%;
 const DEMO = %%DEMO%%;
 const KEY = 'qq_at_done_v3';
@@ -942,6 +1044,190 @@ if (!SERVED) {
   }).catch(() => {});
 }
 
+/* ---------- 数据源面板（QQ / 微信 开关 + 位置 + 多账号） ---------- */
+const srcModal = document.getElementById('srcModal');
+const srcHint = document.getElementById('srcHint');
+const srcMsg = document.getElementById('srcMsg');
+const qqOn = document.getElementById('qqOn');
+const wxOn = document.getElementById('wxOn');
+const qqSt = document.getElementById('qqSt');
+const wxSt = document.getElementById('wxSt');
+const qqExe = document.getElementById('qqExe');
+const qqUin = document.getElementById('qqUin');
+const wxDir = document.getElementById('wxDir');
+const wxPathShow = document.getElementById('wxPathShow');
+let SRC = null;
+
+function srcOpen(on) {
+  srcModal.classList.toggle('show', !!on);
+  if (on) { srcMsg.className = 'srcmsg'; srcLoad(); }
+}
+
+function srcMsgShow(text, kind) {
+  srcMsg.textContent = text;
+  srcMsg.className = 'srcmsg show ' + (kind || 'ok');
+}
+
+function srcSt(blk, sw, lab) {
+  document.getElementById(blk).classList.toggle('off', !sw.checked);
+  lab.textContent = sw.checked ? '已开启' : '已关闭';
+}
+
+function opt(v, t, extra) {
+  const o = document.createElement('option');
+  o.value = v; o.textContent = t;
+  if (extra) o.dataset.extra = extra;
+  return o;
+}
+
+function srcRender(d) {
+  SRC = d;
+
+  // 提示（多账号 / 找不到）
+  if (d.hints && d.hints.length) {
+    srcHint.style.display = 'block';
+    srcHint.innerHTML = '<b>需要你确认一下</b>' +
+      d.hints.map(h => '<div class="h">' + esc(h) + '</div>').join('');
+  } else {
+    srcHint.style.display = 'none';
+  }
+
+  // QQ 开关
+  qqOn.checked = !!d.qq.enabled;
+  srcSt('blkQQ', qqOn, qqSt);
+
+  // QQ 程序位置
+  qqExe.textContent = '';
+  qqExe.appendChild(opt('', '自动找（推荐）'));
+  (d.qq.exe_list || []).forEach(p => qqExe.appendChild(opt(p, p)));
+  const curExe = d.qq.exe || (d.qq.exe_list || [])[0] || '';
+  if (curExe && !(d.qq.exe_list || []).includes(curExe)) qqExe.appendChild(opt(curExe, curExe));
+  qqExe.value = curExe;
+  document.getElementById('qqExePick').style.display = '';
+
+  // QQ 号（多个就问）
+  qqUin.textContent = '';
+  const uins = d.qq.uin_list || [];
+  if (uins.length > 1) qqUin.appendChild(opt('', '— 请选择用哪个号 —'));
+  if (!uins.length) qqUin.appendChild(opt('', '这台机器还没登录过 QQ'));
+  uins.forEach(u => qqUin.appendChild(opt(u, u)));
+  qqUin.value = d.qq.uin || (uins.length === 1 ? uins[0] : '');
+
+  // 微信开关
+  wxOn.checked = !!d.wechat.enabled;
+  srcSt('blkWX', wxOn, wxSt);
+
+  // 微信账号
+  wxDir.textContent = '';
+  const cands = d.wechat.candidates || [];
+  if (cands.length > 1) wxDir.appendChild(opt('', '— 请选择用哪个号 —'));
+  if (!cands.length) wxDir.appendChild(opt('', '没找到微信数据目录'));
+  cands.forEach(c => wxDir.appendChild(opt(
+    c.path,
+    c.account + ' · ' + c.db_count + ' 个库 · ' + c.mtime_txt + (c.official ? '' : '（旧位置）')
+  )));
+  // 多个账号就留空，逼用户自己选 —— 选错不是抓不到，是抓出来一片空
+  wxDir.value = d.wechat.db_dir || (cands.length === 1 ? cands[0].path : '');
+  wxPathShow.value = wxDir.value || '';
+
+  srcMsg.className = 'srcmsg';
+}
+
+function srcLoad() {
+  if (!SERVED) {
+    srcMsgShow('这个面板要用服务模式打开才生效 —— 双击「启动看板.cmd」再进来看。', 'err');
+    return;
+  }
+  fetch('/api/sources').then(r => r.json()).then(srcRender)
+    .catch(() => srcMsgShow('读不到设置，服务可能刚重启，刷新一下页面。', 'err'));
+}
+
+// 手动填路径：浏览器给不了真实路径，只能让人粘
+function srcPickPath(kind) {
+  const cur = kind === 'exe' ? (qqExe.value || '') : (wxDir.value || wxPathShow.value || '');
+  const tip = kind === 'exe'
+    ? '把 QQ.exe 的完整路径粘进来。\\n\\n找法：资源管理器里找到 QQ.exe → 按住 Shift 右键 → 「复制文件地址」。'
+    : '把微信数据文件夹的完整路径粘进来（里面要有 message 目录）。\\n\\n找法：资源管理器里打开该文件夹 → 点一下地址栏 → Ctrl+C。';
+  const v = prompt(tip, cur);
+  if (v === null) return;
+  const path = v.trim().replace(/^"|"$/g, '');
+  if (!path) return;
+  if (kind === 'exe') {
+    if (!/qq[.]exe$/i.test(path)) {
+      srcMsgShow('要的是 QQ.exe 本身，不是文件夹。', 'err');
+      return;
+    }
+    if (![...qqExe.options].some(o => o.value === path)) qqExe.appendChild(opt(path, path));
+    qqExe.value = path;
+    srcMsgShow('已经填成：' + path + '　记得点保存。', 'ok');
+  } else {
+    if (![...wxDir.options].some(o => o.value === path)) wxDir.appendChild(opt(path, path));
+    wxDir.value = path;
+    wxPathShow.value = path;
+    srcMsgShow('已经填成：' + path + '　记得点保存。', 'ok');
+  }
+}
+
+function srcSave() {
+  if (!SRC) { srcMsgShow('还没读到当前设置，等一下再点保存。', 'err'); return; }
+  const body = {
+    qq: { enabled: qqOn.checked, uin: qqUin.value || '', exe: qqExe.value || '' },
+    wechat: { enabled: wxOn.checked, db_dir: wxDir.value || '' }
+  };
+  if (body.qq.enabled && !body.qq.uin && (SRC.qq.uin_list || []).length > 1) {
+    srcMsgShow('QQ 有 ' + SRC.qq.uin_list.length + ' 个号，得先选一个。', 'err');
+    return;
+  }
+  if (body.wechat.enabled && !body.wechat.db_dir && (SRC.wechat.candidates || []).length > 1) {
+    srcMsgShow('微信有 ' + SRC.wechat.candidates.length + ' 个账号，得先选一个。', 'err');
+    return;
+  }
+  const btn = document.getElementById('srcSave');
+  btn.disabled = true; btn.textContent = '保存中…';
+  fetch('/api/sources', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(r => r.json()).then(x => {
+    btn.disabled = false; btn.textContent = '保存';
+    if (!x.ok) { srcMsgShow(x.error || '没保存成功', 'err'); return; }
+    srcRender(x.info);
+    srcMsgShow('已保存。点右上角「↻ 刷新数据」按新设置读一次，看板上就会跟着变。', 'ok');
+  }).catch(() => {
+    btn.disabled = false; btn.textContent = '保存';
+    srcMsgShow('保存失败，服务可能已经停了。', 'err');
+  });
+}
+
+if (document.getElementById('btnSrc')) {
+  document.getElementById('btnSrc').onclick = () => srcOpen(true);
+  document.getElementById('srcClose').onclick = () => srcOpen(false);
+  document.getElementById('srcCancel').onclick = () => srcOpen(false);
+  srcModal.onclick = e => { if (e.target === srcModal) srcOpen(false); };
+  document.getElementById('srcSave').onclick = srcSave;
+  document.getElementById('qqExePick').onclick = () => srcPickPath('exe');
+  document.getElementById('wxDirPick').onclick = () => srcPickPath('dir');
+  qqOn.onchange = () => srcSt('blkQQ', qqOn, qqSt);
+  wxOn.onchange = () => srcSt('blkWX', wxOn, wxSt);
+  wxDir.onchange = () => { wxPathShow.value = wxDir.value || ''; };
+
+  // 列头「读取已关闭」小标签，点一下直接开面板
+  const offQQ = document.getElementById('offQQ');
+  const offWX = document.getElementById('offWX');
+  if (SRCOFF.qq) { offQQ.style.display = ''; offQQ.onclick = () => srcOpen(true); }
+  if (SRCOFF.wechat) { offWX.style.display = ''; offWX.onclick = () => srcOpen(true); }
+  // 第一次进来如果有多账号没定，主动弹一次（一天最多烦一次）
+  if (SRCOFF.ask) {
+    let nag = false;
+    try {
+      const last = parseInt(localStorage.getItem('qad_src_ask') || '0', 10);
+      nag = !last || (Date.now() - last) > 86400000;
+      if (nag) localStorage.setItem('qad_src_ask', String(Date.now()));
+    } catch (e) { nag = false; }
+    if (nag) setTimeout(() => srcOpen(true), 900);
+  }
+}
+
 /* ---------- 更新提示（每天一次心跳，结果由服务端缓存） ---------- */
 const updbar = document.getElementById('updbar');
 const updModal = document.getElementById('updModal');
@@ -1080,6 +1366,23 @@ def build(today: date, days: int = 30, sources=None,
 
     soon = sum(1 for r in rows if r["n"] is not None and 0 <= r["n"] <= 14)
 
+    # 数据源状态：哪一侧被关掉了、哪一侧有多个账号还没定
+    src_off = {"qq": False, "wechat": False, "ask": False}
+    try:
+        qq_off = not bool(settings.get("qq", "enabled", True))
+        wx_off = not bool(settings.get("wechat", "enabled", True))
+        src_off["qq"], src_off["wechat"] = qq_off, wx_off
+        if not wx_off and not str(settings.get("wechat", "db_dir") or "").strip() \
+                and len(settings.db_candidates()) > 1:
+            src_off["ask"] = True
+        if not qq_off and not str(settings.get("qq", "uin") or "").strip() \
+                and len(settings.qq_uins()) > 1:
+            src_off["ask"] = True
+    except Exception:
+        pass
+    if demo:
+        src_off["ask"] = False        # 示例模式别弹面板，那是假数据
+
     try:
         import board_state
         st = board_state.load()
@@ -1103,6 +1406,7 @@ def build(today: date, days: int = 30, sources=None,
         "%%DONE%%": json.dumps(st.get("done") or [], ensure_ascii=False, separators=(",", ":")),
         "%%MUTED%%": json.dumps(st.get("muted") or [], ensure_ascii=False, separators=(",", ":")),
         "%%SHADOW%%": json.dumps(shadow, ensure_ascii=False, separators=(",", ":")),
+        "%%SRCOFF%%": json.dumps(src_off, ensure_ascii=False, separators=(",", ":")),
         "%%SERVED%%": "true" if served else "false",
         "%%DEMO%%": "true" if demo else "false",
         "%%VERSION%%": VERSION,

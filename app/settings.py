@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parent          # .../app
@@ -100,6 +101,23 @@ def get(section_name: str, key: str, default=None):
 
 def section(name: str) -> dict:
     return load().get(name) or {}
+
+
+def save(patch: dict) -> dict:
+    """把 patch 深合并进 config.json 再落盘（不写默认值，不碰别的键）。
+
+    看板上的「数据源」面板用它改 qq/wechat 的 enabled、路径、账号。
+    写之前先读盘上的原文，避免把我们不该管的键也一并写下去。
+    """
+    try:
+        cur = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+    except Exception:                                   # noqa: BLE001
+        cur = {}
+    merged = _merge(cur, patch or {})
+    tmp = CONFIG_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, CONFIG_FILE)
+    return load(reload=True)
 
 
 def days() -> int:
@@ -191,28 +209,154 @@ def _wx_data_root() -> Path | None:
 
 def detect_db_dir() -> Path | None:
     """挑最近还在写入的那个账号的 db_storage（多账号/换号时不会认错）。"""
-    candidates: list[Path] = []
+    cands = db_candidates()
+    return Path(cands[0]["path"]) if cands else None
+
+
+def db_candidates() -> list[dict]:
+    """所有能找到的微信数据目录 —— 多账号时让用户自己选，别替他猜。
+
+    优先级：微信自己记录的数据根（`%APPDATA%\\Tencent\\xwechat\\config\\*.ini`）
+    高于任何猜测路径。这一步不能省 —— 猜路径里经常躺着换盘前的旧副本，
+    按 mtime 比大小会正好选中那份过期的，抓出来一片空。
+    """
+    roots: list[tuple[Path, bool]] = []
     wx_root = _wx_data_root()
     if wx_root:
-        candidates = list(wx_root.glob("xwechat_files/*/db_storage"))
-    if not candidates:
-        for base in (Path.home() / "xwechat_files",
-                     Path.home() / "Documents" / "xwechat_files"):
-            if base.exists():
-                candidates += list(base.glob("*/db_storage"))
-    best, best_mtime = None, -1.0
-    for d in candidates:
-        msg = d / "message"
-        if not msg.exists():
-            continue
-        for f in msg.glob("message_*.db"):
-            try:
-                m = f.stat().st_mtime
-            except OSError:
+        roots.append((wx_root, True))
+    for base in (Path.home() / "xwechat_files",
+                 Path.home() / "Documents" / "xwechat_files"):
+        if base.exists():
+            roots.append((base, False))
+
+    out: list[dict] = []
+    seen: set[str] = set()
+    for root, official in roots:
+        found_here = 0
+        # ini 里记的是"数据根"（如 H:\wx），下面还有一层 xwechat_files；
+        # 但个别版本记的就是 xwechat_files 本身，两种都试
+        pats = ["xwechat_files/*/db_storage", "*/db_storage"] if official \
+            else ["*/db_storage"]
+        dirs: list[Path] = []
+        for pat in pats:
+            dirs += list(root.glob(pat))
+        for d in dirs:
+            msg = d / "message"
+            if not msg.exists():
                 continue
-            if m > best_mtime:
-                best, best_mtime = d, m
-    return best
+            try:
+                key = str(d.resolve()).lower()
+            except OSError:
+                key = str(d).lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            dbs = list(msg.glob("message_*.db"))
+            mtime = max((f.stat().st_mtime for f in dbs), default=0.0)
+            out.append({
+                "path": str(d),
+                "account": d.parent.name,          # 一般是 wxid_xxx
+                "db_count": len(dbs),
+                "mtime": mtime,
+                "official": official,
+            })
+            found_here += 1
+        if official and found_here:
+            break          # 官方位置有结果，就别拿猜测路径来搅局
+
+    # 同一个号可能在两个位置各有一份（换过盘、备份过），那不算"多个账号"。
+    # 按号去重，官方位置优先、其次取最近用过的 —— 否则用户会被问一句莫名其妙的话。
+    best: dict[str, dict] = {}
+    for c in out:
+        k = (c["account"] or "").lower()
+        cur = best.get(k)
+        if cur is None or (c["official"], c["mtime"]) > (cur["official"], cur["mtime"]):
+            best[k] = c
+    out = list(best.values())
+    out.sort(key=lambda x: (not x["official"], -x["mtime"]))
+    return out
+
+
+# ------------------------------------------------------------ QQ 位置 / 账号
+QQ_EXE_HINTS = (
+    r"C:\Program Files\Tencent\QQNT\QQ.exe",
+    r"C:\Program Files (x86)\Tencent\QQNT\QQ.exe",
+    r"D:\Program Files\Tencent\QQNT\QQ.exe",
+    r"D:\Tencent\QQNT\QQ.exe",
+)
+
+
+def _qq_from_registry() -> list[str]:
+    """注册表里的 QQ 安装位置 —— 装在非常规盘符时只靠猜是不行的。"""
+    found: list[str] = []
+    try:
+        import winreg
+    except ImportError:
+        return found
+    keys = (
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\QQ"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\QQ"),
+        (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\QQ"),
+    )
+    for hive, path in keys:
+        try:
+            with winreg.OpenKey(hive, path) as k:
+                for name in ("InstallLocation", "DisplayIcon", "UninstallString"):
+                    try:
+                        v, _ = winreg.QueryValueEx(k, name)
+                    except OSError:
+                        continue
+                    v = str(v).strip().strip('"')
+                    if not v:
+                        continue
+                    p = Path(v)
+                    found.append(str(p if p.suffix.lower() == ".exe" else p / "QQ.exe"))
+        except OSError:
+            continue
+    return found
+
+
+def qq_exes() -> list[str]:
+    """所有可能的 QQ.exe（去重、只留真实存在的），排在前面的是当前配置。"""
+    cands: list[str] = []
+    p = (get("qq", "exe") or "").strip()
+    if p:
+        cands.append(p)
+    cands += _qq_from_registry()
+    cands += list(QQ_EXE_HINTS)
+    cands.append(str(Path.home() / "AppData/Local/Programs/Tencent/QQNT/QQ.exe"))
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for c in cands:
+        p = Path(c)
+        if p.name.lower() != "qq.exe":      # 注册表里 InstallLocation/DisplayIcon 会甩出 Uninstall.exe
+            continue
+        try:
+            if not p.exists():
+                continue
+            k = str(p.resolve()).lower()
+        except OSError:
+            continue
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(str(p))
+    return out
+
+
+def qq_uins() -> list[str]:
+    """这台机器上用 NapCat 登录过的 QQ 号（每个号一个 napcat_<uin>.json）。"""
+    d = napcat_dir() / "config"
+    out: list[str] = []
+    for f in d.glob("napcat_*.json") if d.exists() else []:
+        stem = f.stem
+        if "_" not in stem:
+            continue
+        uin = stem.split("_", 1)[1].strip()
+        if uin.isdigit():
+            out.append(uin)
+    return sorted(set(out))
 
 
 if __name__ == "__main__":

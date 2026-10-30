@@ -312,6 +312,95 @@ class NapCatJob:
 NAPJOB = NapCatJob()
 
 
+# ------------------------------------------------------------------ 数据源
+def sources_info() -> dict:
+    """看板「数据源」面板要的一切：开关、当前值、所有候选。
+
+    多账号时**不替用户选**：把候选全列出来让他点。选错了不是小事 ——
+    抓出来一片空，用户还以为是程序坏了。
+    """
+    import datetime as _dt
+
+    qq_uin = str(settings.get("qq", "uin") or "").strip()
+    qq_exe = str(settings.get("qq", "exe") or "").strip()
+    wx_dir = str(settings.get("wechat", "db_dir") or "").strip()
+
+    exes = settings.qq_exes()
+    uins = settings.qq_uins()
+    cands = settings.db_candidates()
+    for c in cands:
+        c["mtime_txt"] = (
+            _dt.datetime.fromtimestamp(c["mtime"]).strftime("%m-%d %H:%M")
+            if c["mtime"] else "—"
+        )
+
+    hints: list[str] = []
+    if len(cands) > 1 and not wx_dir:
+        hints.append(f"这台机器上有 {len(cands)} 个微信账号，用哪个？"
+                     "选错了不会报错，只会抓出来一片空")
+    if len(uins) > 1 and not qq_uin:
+        hints.append(f"检测到 {len(uins)} 个 QQ 号，用哪个？")
+    if qq_uin and uins and qq_uin not in uins:
+        hints.append(f"QQ 号 {qq_uin} 这台机器没登录过，要重新扫码")
+    if not exes:
+        hints.append("没找到 QQ.exe —— 在下面填一下 QQ 装在哪")
+    if not cands:
+        hints.append("没找到微信数据目录 —— 先正常登录一次微信，再从下面手动选文件夹")
+
+    cur_db = settings.wechat_db_dir()
+    return {
+        "qq": {
+            "enabled": bool(settings.get("qq", "enabled", True)),
+            "uin": qq_uin, "uin_list": uins,
+            "exe": qq_exe, "exe_list": exes,
+            "napcat": str(settings.napcat_dir()),
+        },
+        "wechat": {
+            "enabled": bool(settings.get("wechat", "enabled", True)),
+            "db_dir": wx_dir, "current": str(cur_db or ""),
+            "candidates": cands,
+        },
+        "hints": hints,
+        "needs_choice": bool(hints),
+    }
+
+
+def save_sources(body: dict) -> dict:
+    """保存用户的选择。只动 qq/wechat 里的几个键，别的配置原样保留。"""
+    patch: dict = {}
+    qq = body.get("qq") or {}
+    wx = body.get("wechat") or {}
+
+    if "enabled" in qq:
+        patch.setdefault("qq", {})["enabled"] = bool(qq["enabled"])
+    if "uin" in qq:
+        uin = str(qq.get("uin") or "").strip()
+        if uin and not uin.isdigit():
+            return {"ok": False, "error": "QQ 号只能是数字"}
+        patch.setdefault("qq", {})["uin"] = uin
+    if "exe" in qq:
+        exe = str(qq.get("exe") or "").strip()
+        if exe and not Path(exe).exists():
+            return {"ok": False, "error": f"找不到 {exe}"}
+        patch.setdefault("qq", {})["exe"] = exe
+
+    if "enabled" in wx:
+        patch.setdefault("wechat", {})["enabled"] = bool(wx["enabled"])
+    if "db_dir" in wx:
+        d = str(wx.get("db_dir") or "").strip()
+        if d and not (Path(d) / "message").exists():
+            return {"ok": False, "error": f"{d} 下面没有 message 目录，不像是微信数据目录"}
+        patch.setdefault("wechat", {})["db_dir"] = d
+
+    if not patch:
+        return {"ok": False, "error": "没有要保存的内容"}
+    try:
+        settings.save(patch)
+    except OSError as e:
+        return {"ok": False, "error": f"写 config.json 失败：{e}"}
+    return {"ok": True, "info": sources_info()}
+
+
 # ------------------------------------------------------------------ 体检
 def _ver_pair(text: str) -> tuple[str, int]:
     """'9.9.36-53644' → ('9.9.36-53644', 53644)。构建号用来比新旧。"""
@@ -385,7 +474,7 @@ def doctor() -> dict:
             add("QQ 版本", True,
                 f"{qv}　（QQ 刚自动升级过、又突然抓不到，先更新 NapCat 再试）")
     else:
-        add("QQ 侧", True, "已关闭（config.json: qq.enabled = false）")
+        add("QQ 侧", True, "已关闭 —— 看板右上角「数据源」里可以打开")
 
     if settings.get("wechat", "enabled", True):
         db = settings.wechat_db_dir()
@@ -402,7 +491,7 @@ def doctor() -> dict:
         add("微信进程", running,
             f"{proc} {'正在运行' if running else '未运行（首次取密钥需要它开着）'}")
     else:
-        add("微信侧", True, "已关闭（config.json: wechat.enabled = false）")
+        add("微信侧", True, "已关闭 —— 看板右上角「数据源」里可以打开")
 
     keys = settings.work_dir() / "all_keys.json"
     add("数据库密钥", keys.exists(), "已有" if keys.exists() else "还没有（首次刷新会自动提取）")
@@ -462,6 +551,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, board_state.load())
         elif path == "/api/doctor":
             self._json(200, doctor())
+        elif path == "/api/sources":
+            self._json(200, sources_info())
         elif path == "/api/refresh":
             self._json(200, JOB.snapshot())
         elif path == "/api/napcat":
@@ -500,6 +591,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": started, "already": not started})
         elif path == "/api/install":
             self._json(200, install_deps())
+        elif path == "/api/sources":
+            self._json(200, save_sources(body if isinstance(body, dict) else {}))
         elif path == "/api/update/apply":
             started = UPD.start()
             self._json(200, {"ok": started, "already": not started})
