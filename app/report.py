@@ -197,6 +197,8 @@ TPL = """<!DOCTYPE html>
   --qq:#4c9aff;--wx:#22d39a;
   --shadow:0 18px 48px rgba(0,0,0,.45);
   --glass:rgba(11,18,32,.72);
+  --on-brand:#04120d;          /* 渐变主按钮上的字：深色主题下用深字才够亮 */
+  --hover:rgba(255,255,255,.07);
 }
 :root[data-theme=light]{
   --bg:#f3f6fb;--bg2:#ffffff;--bg3:#f7f9fd;--bg4:#eef3fb;
@@ -207,6 +209,8 @@ TPL = """<!DOCTYPE html>
   --qq:#2563eb;--wx:#0f9d6e;
   --shadow:0 14px 40px rgba(16,24,40,.12);
   --glass:rgba(255,255,255,.78);
+  --on-brand:#ffffff;          /* 浅色主题的渐变更饱和，深字会糊，改用白字 */
+  --hover:rgba(16,24,40,.05);
 }
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--tx);min-height:100vh;
@@ -296,7 +300,7 @@ label.chk:has(input:checked){color:var(--brand)}
 .btn-act:hover{border-color:var(--line2);background:var(--bg4);transform:translateY(-1px)}
 .btn-act:active{transform:translateY(0)}
 .btn-act.primary{background:linear-gradient(135deg,var(--brand),var(--brand2));
-  border-color:transparent;color:#04120d;font-weight:700;
+  border-color:transparent;color:var(--on-brand);font-weight:700;
   box-shadow:0 6px 20px rgba(22,227,165,.28)}
 .btn-act.primary:hover{filter:brightness(1.08);box-shadow:0 8px 26px rgba(22,227,165,.4)}
 .btn-act:disabled{opacity:.6;cursor:default;transform:none}
@@ -330,10 +334,10 @@ label.chk:has(input:checked){color:var(--brand)}
 
 /* ---- 演示横幅 ---- */
 .demobar{background:linear-gradient(90deg,rgba(255,176,32,.16),rgba(255,176,32,.06));
-  border-bottom:1px solid rgba(255,176,32,.28);color:#ffcf7a;
+  border-bottom:1px solid rgba(255,176,32,.28);color:var(--warn);
   font-size:12.5px;padding:8px 30px;display:flex;gap:10px;align-items:center}
 .demobar b{font-weight:650}
-.demobar a{margin-left:auto;color:#ffcf7a;font-weight:600;text-decoration:none}
+.demobar a{margin-left:auto;color:var(--warn);font-weight:600;text-decoration:none}
 .demobar a:hover{text-decoration:underline}
 
 /* ---- 更新提示条 ---- */
@@ -349,9 +353,9 @@ label.chk:has(input:checked){color:var(--brand)}
 .updbar .ub-btn{padding:4px 11px;border-radius:8px;border:1px solid var(--line2);
   background:transparent;color:var(--tx);font-size:12px;font-family:inherit;cursor:pointer;flex:none;
   transition:.15s}
-.updbar .ub-btn:hover{background:rgba(255,255,255,.07)}
+.updbar .ub-btn:hover{background:var(--hover)}
 .updbar .ub-btn.primary{background:linear-gradient(135deg,var(--brand),var(--brand2));
-  color:#04120d;font-weight:700;border-color:transparent}
+  color:var(--on-brand);font-weight:700;border-color:transparent}
 .updbar .ub-x{margin-left:auto;cursor:pointer;opacity:.6;font-size:15px;line-height:1;flex:none}
 .updbar .ub-x:hover{opacity:1}
 
@@ -393,7 +397,7 @@ label.chk:has(input:checked){color:var(--brand)}
   cursor:pointer;transition:.15s}
 .modal .mf .ub-btn:hover{border-color:var(--line2);background:var(--bg4)}
 .modal .mf .ub-btn.primary{background:linear-gradient(135deg,var(--brand),var(--brand2));
-  border-color:transparent;color:#04120d;font-weight:700}
+  border-color:transparent;color:var(--on-brand);font-weight:700}
 .ver{color:var(--tx3);font-size:11.5px;font-family:ui-monospace,Consolas,monospace}
 
 /* ---- 数据源面板 ---- */
@@ -434,7 +438,7 @@ label.chk:has(input:checked){color:var(--brand)}
   border-color:transparent;box-shadow:0 0 14px rgba(22,227,165,.35)}
 .sw input:checked+i::after{transform:translateX(18px)}
 .sw input:focus-visible+i{box-shadow:0 0 0 3px rgba(22,227,165,.25)}
-.srchint{background:rgba(255,176,32,.08);border:1px solid rgba(255,176,32,.26);color:#ffcf7a;
+.srchint{background:rgba(255,176,32,.08);border:1px solid rgba(255,176,32,.26);color:var(--warn);
   border-radius:10px;padding:10px 13px;font-size:12.5px;line-height:1.68;margin-bottom:12px}
 .srchint b{display:block;margin-bottom:3px;color:var(--warn)}
 .srchint .h{display:flex;gap:7px}
@@ -539,10 +543,10 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
 .empty{color:var(--tx3);padding:26px;text-align:center;background:var(--bg2);
   border:1px dashed var(--line);border-radius:12px;font-size:12.5px}
 .warn{margin:14px 30px 0;padding:11px 14px;background:rgba(255,176,32,.08);
-  border:1px solid rgba(255,176,32,.26);border-radius:10px;color:#ffcf7a;
+  border:1px solid rgba(255,176,32,.26);border-radius:10px;color:var(--warn);
   font-size:12.5px;line-height:1.75}
 .warn b{color:var(--warn)}
-.warn code{background:rgba(0,0,0,.25);padding:1px 6px;border-radius:5px;
+.warn code{background:var(--hover);padding:1px 6px;border-radius:5px;
   font-family:ui-monospace,Consolas,monospace;font-size:11.5px}
 
 /* ---- 取消关注 ---- */
