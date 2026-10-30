@@ -372,6 +372,20 @@ def sources_info() -> dict:
     }
 
 
+def _clean_path(p: str) -> str:
+    """统一成 Windows 反斜杠，顺手把 `H://wx//x` 这种重复分隔符压掉。
+
+    路径可能是手粘的、也可能经过一层 shell，正斜杠和双斜杠都见过 ——
+    config.json 里存成 `H://wx//...` 虽然还能用（Path 会归一），但显示出来像坏了。
+    """
+    if not p:
+        return ""
+    try:
+        return str(Path(p))
+    except (OSError, ValueError):
+        return p
+
+
 def save_sources(body: dict) -> dict:
     """保存用户的选择。只动 qq/wechat 里的几个键，别的配置原样保留。"""
     patch: dict = {}
@@ -389,7 +403,7 @@ def save_sources(body: dict) -> dict:
         exe = str(qq.get("exe") or "").strip()
         if exe and not Path(exe).exists():
             return {"ok": False, "error": f"找不到 {exe}"}
-        patch.setdefault("qq", {})["exe"] = exe
+        patch.setdefault("qq", {})["exe"] = _clean_path(exe)
 
     if "enabled" in wx:
         patch.setdefault("wechat", {})["enabled"] = bool(wx["enabled"])
@@ -397,7 +411,7 @@ def save_sources(body: dict) -> dict:
         d = str(wx.get("db_dir") or "").strip()
         if d and not (Path(d) / "message").exists():
             return {"ok": False, "error": f"{d} 下面没有 message 目录，不像是微信数据目录"}
-        patch.setdefault("wechat", {})["db_dir"] = d
+        patch.setdefault("wechat", {})["db_dir"] = _clean_path(d)
 
     if not patch:
         return {"ok": False, "error": "没有要保存的内容"}
