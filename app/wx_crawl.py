@@ -99,26 +99,33 @@ def strip_keywords(text: str) -> str:
     return out.strip(" \u2005\u3000\r\n\t，,。:：")
 
 
-def _look_back(con, tbl: str, sort_seq, ts, sender, people, used=None) -> dict | None:
-    """纯喊话时，往回找一条"正文"。
+def _look_around(con, tbl: str, sort_seq, ts, sender, people, used=None) -> dict | None:
+    """纯喊话时，往前往后各找一遍正文。
 
     必须按 sort_seq 而不是 local_id：微信回填历史时是"老的先入库、新的后入库"
     的反向插入，local_id 几乎完全是倒序的（实测 23 行里 22 个逆序点），
-    照 local_id 取"上一条"会取到更晚的消息。sort_seq 是真正的会话顺序。
+    照 local_id 取会取到**更晚**的消息。sort_seq 是真正的会话顺序。
     """
-    try:
-        prev = con.execute(
-            f'SELECT sort_seq, create_time, real_sender_id, message_content FROM "{tbl}" '
-            f'WHERE sort_seq < ? AND local_type = 1 AND WCDB_CT_message_content = 0 '
-            f'ORDER BY sort_seq DESC LIMIT 10', (sort_seq,)).fetchall()
-    except sqlite3.Error:
-        return None
-    cands = []
-    for pseq, pts, _psid, pcontent in prev:
-        psender, ptext = parse_group_content(pcontent)
-        cands.append({"ts": pts, "sender": psender, "key": pseq,
-                      "display": people.get(psender, psender), "text": ptext})
-    return ctx.pick_context(cands, sender, ts, used=used)
+    def fetch(where: str, order: str):
+        try:
+            return con.execute(
+                f'SELECT sort_seq, create_time, real_sender_id, message_content FROM "{tbl}" '
+                f'WHERE sort_seq {where} ? AND local_type = 1 AND WCDB_CT_message_content = 0 '
+                f'ORDER BY sort_seq {order} LIMIT 16', (sort_seq,)).fetchall()
+        except sqlite3.Error:
+            return []
+
+    def to_cands(rows):
+        out = []
+        for pseq, pts, _psid, pcontent in rows:
+            psender, ptext = parse_group_content(pcontent)
+            out.append({"ts": pts, "sender": psender, "key": pseq,
+                        "display": people.get(psender, psender), "text": ptext})
+        return out
+
+    prev = to_cands(fetch("<", "DESC"))          # 最近的在最前
+    nxt = to_cands(fetch(">", "ASC"))
+    return ctx.resolve(prev, nxt, sender, ts, used=used)
 
 
 def scan(days: int = 30) -> tuple[dict, dict]:
@@ -192,11 +199,11 @@ def scan(days: int = 30) -> tuple[dict, dict]:
                 }
                 if ctx.is_bare(item["text"]):
                     # 先发正文、再单独 @所有人 —— 正文在上一条里，捞回来
-                    pick = _look_back(con, tbl, sseq, ts, sender, people, used_seq)
+                    pick = _look_around(con, tbl, sseq, ts, sender, people, used_seq)
                     if pick:
                         item["ctx"] = pick["text"]
                         item["ctx_from"] = ctx.describe(pick)
-                        used_seq.add(pick["key"])
+                        used_seq.update(pick["keys"])
                     else:
                         stats["bare"] += 1        # 找不到正文，交给看板决定怎么处理
                 bucket.append(item)

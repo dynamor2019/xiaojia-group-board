@@ -539,8 +539,8 @@ function groupHTML(g, rs, qs) {
   const body = rs.map(r => {
     const main = r.x || r.c || '';
     const extra = (r.x && r.c)
-      ? '<div class="msg-c">↑ 上文：' + hl(r.c, qs) + '<span>' + esc(r.cf) + '</span></div>'
-      : ((!r.x && r.c) ? '<div class="msg-cf">↑ 这条只发了 @所有人，正文取自上文 · ' +
+      ? '<div class="msg-c">↑ 上下文：' + hl(r.c, qs) + '<span>' + esc(r.cf) + '</span></div>'
+      : ((!r.x && r.c) ? '<div class="msg-cf">↑ 这条只发了 @所有人，正文取自上下文 · ' +
                           esc(r.cf) + '</div>' : '');
     return '<div class="msg' + (done.has(r.i) ? ' done' : '') + '">' +
       '<div class="msg-h"><b>' + esc(r.s || '未知') + '</b><span>' + r.t + '</span>' +
@@ -836,7 +836,7 @@ def build(today: date, days: int = 30, sources=None,
     if n_exp:
         hide_parts.append(f"{n_exp} 条已过期")
     if n_bare:
-        hide_parts.append(f"{n_bare} 条只喊了 @所有人、上文也找不到正文")
+        hide_parts.append(f"{n_bare} 条只喊了 @所有人、上下文也找不到正文")
     dropped_txt = ("，".join(hide_parts) + "，已隐藏") if hide_parts else ""
     groups: dict[str, dict] = {}
     for r in rows:

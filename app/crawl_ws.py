@@ -169,15 +169,18 @@ def pick_hits(all_msgs: list[dict], floor_ts: int) -> list[dict]:
             "text": it["text"],
         }
         if ctx.is_bare(it["text"]):
-            cands = [{"ts": x["ts"], "sender": x["sender"], "display": x["sender"],
-                      "text": x["text"], "key": j}
-                     for j, x in enumerate(all_msgs[max(0, i - 10):i], start=max(0, i - 10))]
-            cands.reverse()                                       # 最近的在最前
-            pick = ctx.pick_context(cands, it["sender"], it["ts"], used=used)
+            lo = max(0, i - 10)
+            prev = [{"ts": x["ts"], "sender": x["sender"], "display": x["sender"],
+                     "text": x["text"], "key": j} for j, x in enumerate(all_msgs[lo:i], start=lo)]
+            prev.reverse()                                    # 最近的在最前
+            nxt = [{"ts": x["ts"], "sender": x["sender"], "display": x["sender"],
+                    "text": x["text"], "key": j}
+                   for j, x in enumerate(all_msgs[i + 1:i + 16], start=i + 1)]
+            pick = ctx.resolve(prev, nxt, it["sender"], it["ts"], used=used)
             if pick:
                 rec["ctx"] = pick["text"]
                 rec["ctx_from"] = ctx.describe(pick)
-                used.add(pick["key"])
+                used.update(pick["keys"])
         hits.append(rec)
     hits.sort(key=lambda x: x["time"])
     return hits
