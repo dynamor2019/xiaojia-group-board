@@ -25,6 +25,9 @@ decrypted/
 __pycache__/
 *.py[cod]
 
+# ------- graphify 生成的知识图谱：可再生成，不进仓库 -------
+graphify-out/
+
 # ------- 编辑器 / 系统 -------
 logs/
 *.log
