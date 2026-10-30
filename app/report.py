@@ -61,6 +61,74 @@ from digest import extract_deadlines, pick_src, topic_of  # noqa: E402
 SRC_CLS = {"QQ": "bqq", "微信": "bwx"}
 
 
+# --------------------------------------------------------- 七段数码管（更新时间）
+# 把 "2026-10-30 19:41" 画成电子表那种横竖杠。纯静态 SVG：
+# 不引网络字体、不靠 JS，单文件发给别人也一样能看。
+def _hseg(x0: float, x1: float, y: float, t: float = 3.6) -> str:
+    """横杠：两端削尖的六边形，像真数码管的笔画（直角会显得很呆）。"""
+    d = t / 2
+    return (f"{x0:.2f},{y:.2f} {x0 + t:.2f},{y - d:.2f} {x1 - t:.2f},{y - d:.2f} "
+            f"{x1:.2f},{y:.2f} {x1 - t:.2f},{y + d:.2f} {x0 + t:.2f},{y + d:.2f}")
+
+
+def _vseg(x: float, y0: float, y1: float, t: float = 3.6) -> str:
+    """竖杠：同理，上下削尖。"""
+    d = t / 2
+    return (f"{x:.2f},{y0:.2f} {x + d:.2f},{y0 + t:.2f} {x + d:.2f},{y1 - t:.2f} "
+            f"{x:.2f},{y1:.2f} {x - d:.2f},{y1 - t:.2f} {x - d:.2f},{y0 + t:.2f}")
+
+
+# 单个数字占 22 宽、38 高；a 顶 / b 右上 / c 右下 / d 底 / e 左下 / f 左上 / g 中
+_SEG_PTS = {
+    "a": _hseg(2.8, 19.2, 3.4),
+    "b": _vseg(20.2, 4.6, 17.2),
+    "c": _vseg(20.2, 20.8, 33.4),
+    "d": _hseg(2.8, 19.2, 34.6),
+    "e": _vseg(1.8, 20.8, 33.4),
+    "f": _vseg(1.8, 4.6, 17.2),
+    "g": _hseg(2.8, 19.2, 19.0),
+}
+_SEG_ORDER = "abcdefg"
+_SEG_ON = {
+    "0": "abcdef", "1": "bc", "2": "abdeg", "3": "abcdg", "4": "bcfg",
+    "5": "acdfg", "6": "acdefg", "7": "abc", "8": "abcdefg", "9": "abcdfg",
+}
+
+
+def sev_seg(text: str) -> str:
+    """时间戳 → 一段七段数码管 SVG。没亮的笔画也画出来（压暗），才有电子表的味道。"""
+    if not text:
+        return ""
+    groups: list[str] = []
+    x = 0.0
+    for ch in str(text):
+        if ch in _SEG_ON:
+            on = _SEG_ON[ch]
+            polys = "".join(
+                f'<polygon class="{"on" if s in on else "off"}" points="{_SEG_PTS[s]}"/>'
+                for s in _SEG_ORDER)
+            groups.append(f'<g transform="translate({x:.1f} 0)">{polys}</g>')
+            x += 25
+        elif ch == ":":
+            groups.append(f'<g transform="translate({x:.1f} 0)">'
+                          '<rect class="on" x="9" y="9.6" width="4" height="4"/>'
+                          '<rect class="on" x="9" y="24.4" width="4" height="4"/></g>')
+            x += 13
+        elif ch == "-":                     # 减号就是中间那根 g
+            groups.append(f'<g transform="translate({x:.1f} 0)">'
+                          f'<polygon class="on" points="{_SEG_PTS["g"]}"/></g>')
+            x += 20
+        elif ch == " ":
+            x += 9
+        else:
+            x += 22
+    w = max(x - 5, 10)
+    label = html.escape(str(text))
+    return (f'<svg class="seg" viewBox="0 0 {w:.0f} 38" role="img" '
+            f'aria-label="{label}"><title>{label}</title>'
+            + "".join(groups) + "</svg>")
+
+
 # --------------------------------------------------------------------------- 数据
 def pick_wx_src() -> Path | None:
     """最新的微信侧抓取结果（没有就返回 None，看板照常只显示 QQ）。"""
@@ -199,6 +267,7 @@ TPL = """<!DOCTYPE html>
   --glass:rgba(11,18,32,.72);
   --on-brand:#04120d;          /* 渐变主按钮上的字：深色主题下用深字才够亮 */
   --hover:rgba(255,255,255,.07);
+  --seg-off:rgba(22,227,165,.12);   /* 数码管没亮的笔画 */
 }
 :root[data-theme=light]{
   --bg:#f3f6fb;--bg2:#ffffff;--bg3:#f7f9fd;--bg4:#eef3fb;
@@ -211,6 +280,7 @@ TPL = """<!DOCTYPE html>
   --glass:rgba(255,255,255,.78);
   --on-brand:#ffffff;          /* 浅色主题的渐变更饱和，深字会糊，改用白字 */
   --hover:rgba(16,24,40,.05);
+  --seg-off:rgba(15,157,110,.14);
 }
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--tx);min-height:100vh;
@@ -258,6 +328,17 @@ h1 .tag{display:inline-block;margin-left:8px;padding:1.5px 8px;border-radius:999
   color:var(--brand);background:rgba(22,227,165,.1);border:1px solid rgba(22,227,165,.28);
   -webkit-text-fill-color:currentColor}
 .sub{color:var(--tx2);font-size:12.5px;letter-spacing:.1px}
+
+/* ---- 更新时间：标题右边的七段数码管 ----
+   没亮的笔画也画（压暗），才有电子表那种"底纹"的味道。 */
+.hrow{display:flex;align-items:center;gap:15px;flex-wrap:wrap}
+.clock{display:inline-flex;align-items:center;gap:8px;flex:none}
+.clock .lbl{font-size:11.5px;color:var(--tx3);letter-spacing:.6px;white-space:nowrap}
+svg.seg{height:21px;width:auto;display:block;flex:none}
+svg.seg polygon,svg.seg rect{fill:var(--seg-off)}
+svg.seg .on{fill:var(--brand)}
+/* 发光只在深色下开：浅色主题上一圈薄荷绿光晕会显脏 */
+:root:not([data-theme=light]) .clock svg.seg{filter:drop-shadow(0 0 5px rgba(22,227,165,.32))}
 /* 「近 N 天」的 N 是能直接改的：数字框平时看着像普通文字，hover / 聚焦才显出输入框的样子 */
 .sub .days{display:inline-block;vertical-align:-2px;width:3.2em;margin:0 2px;padding:1px 4px;
   border:1px solid transparent;border-radius:6px;background:transparent;color:var(--tx);
@@ -608,6 +689,9 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
   .foot{padding-left:16px;padding-right:16px}
   .stats{gap:8px}
   .stat{min-width:calc(50% - 4px)}
+  /* 窄屏上「更新时间」这个标签先省掉，数码管本身留着 */
+  .clock .lbl{display:none}
+  svg.seg{height:19px}
 }
 
 </style></head><body>
@@ -624,8 +708,13 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
   <div class="brand">
     <img src="%%LOGO%%" alt="小贾">
     <div class="tt">
-      <h1>%%BRAND%%<span class="tag">QQ · 微信</span></h1>
-      <div class="sub">抓取 %%NOW%% · 近 <input type="number" id="daysIn" class="days"
+      <div class="hrow">
+        <h1>%%BRAND%%<span class="tag">QQ · 微信</span></h1>
+        <div class="clock" title="上次抓取完成于 %%NOW%%">
+          <span class="lbl">更新时间</span>%%CLOCK%%
+        </div>
+      </div>
+      <div class="sub">查看最近 <input type="number" id="daysIn" class="days"
         min="1" max="365" step="1" value="%%DAYSN%%" title="%%DROPTIP%%"> 天</div>
     </div>
     <div class="acts" id="acts">
@@ -1654,13 +1743,18 @@ def build(today: date, days: int = 30, sources=None,
     except Exception:
         st = {"done": [], "muted": []}
 
+    # 取一次时间，纯文本和数码管用的是同一个 —— 分两次取可能跨过整分钟，
+    # 出现"悬停显示 19:41、数码管却是 19:42"这种对不上的情况
+    _now = f"{datetime.now():%Y-%m-%d %H:%M}"
+
     subs = {
         "%%BRAND%%": BRAND,
         "%%LOGO%%": asset_uri("logo-112.png"),
         "%%FAVICON%%": asset_uri("favicon.png"),
         "%%BOARDFILE%%": settings.board_file().name,
         "%%TODAY%%": f"{today:%Y-%m-%d}",
-        "%%NOW%%": f"{datetime.now():%Y-%m-%d %H:%M}",
+        "%%NOW%%": _now,
+        "%%CLOCK%%": sev_seg(_now),
         "%%DAYSN%%": str(days if days and days > 0 else 30),
         "%%DROPTIP%%": dropped_txt,
         "%%TOTAL%%": str(len(rows)),
