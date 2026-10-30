@@ -316,10 +316,12 @@ header{padding:15px 30px 13px;background:var(--glass);border-bottom:1px solid va
 header::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1px;
   background:linear-gradient(90deg,transparent,rgba(22,227,165,.55),rgba(10,168,255,.5),transparent);
   opacity:.55}
-.brand{display:flex;align-items:center;gap:13px;margin-bottom:4px}
+/* 顶栏内容跟下面的两列对齐：main 是 max-width 1680 含左右各 30 的 padding，
+   内容盒正好 1620 —— 这里就照这个数，宽屏上标题和第一张卡片会落在同一条竖线上 */
+.hin{max-width:1620px;margin:0 auto}
+.brand{display:flex;align-items:center;justify-content:center;gap:13px;flex-wrap:wrap}
 .brand img{width:44px;height:44px;border-radius:13px;object-fit:cover;flex:none;
   border:1px solid var(--line2);box-shadow:0 0 0 3px rgba(22,227,165,.08),0 8px 24px rgba(0,0,0,.35)}
-.brand .tt{min-width:0}
 h1{margin:0;font-size:20px;font-weight:680;letter-spacing:.3px;line-height:1.28;
   background:linear-gradient(92deg,var(--tx) 20%,var(--brand) 120%);
   -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
@@ -327,12 +329,12 @@ h1 .tag{display:inline-block;margin-left:8px;padding:1.5px 8px;border-radius:999
   font-size:10px;font-weight:650;letter-spacing:.6px;vertical-align:2px;
   color:var(--brand);background:rgba(22,227,165,.1);border:1px solid rgba(22,227,165,.28);
   -webkit-text-fill-color:currentColor}
-.sub{color:var(--tx2);font-size:12.5px;letter-spacing:.1px}
+.sub{color:var(--tx2);font-size:12.5px;letter-spacing:.1px;
+  display:inline-flex;align-items:center;gap:4px;white-space:nowrap;margin-left:2px}
 
 /* ---- 更新时间：标题右边的七段数码管 ----
    没亮的笔画也画（压暗），才有电子表那种"底纹"的味道。 */
-.hrow{display:flex;align-items:center;gap:15px;flex-wrap:wrap}
-.clock{display:inline-flex;align-items:center;gap:8px;flex:none}
+.clock{display:inline-flex;align-items:center;gap:8px;flex:none;margin-left:4px}
 .clock .lbl{font-size:11.5px;color:var(--tx3);letter-spacing:.6px;white-space:nowrap}
 svg.seg{height:21px;width:auto;display:block;flex:none}
 svg.seg polygon,svg.seg rect{fill:var(--seg-off)}
@@ -352,7 +354,7 @@ svg.seg .on{fill:var(--brand)}
 .sub .days:disabled{opacity:.75;cursor:not-allowed}
 .sub .days:disabled:hover{border-color:transparent;background:transparent}
 
-.stats{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+.stats{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;justify-content:center}
 .stat{position:relative;padding:8px 14px 8px 13px;border-radius:11px;min-width:96px;
   background:var(--bg3);border:1px solid var(--line);cursor:default;
   transition:border-color .18s,transform .18s,background .18s}
@@ -365,7 +367,7 @@ svg.seg .on{fill:var(--brand)}
 .stat.click:hover{border-color:var(--line2);background:var(--bg4);transform:translateY(-1px)}
 .stat[title]:hover{border-color:var(--line2)}
 
-.bar{display:flex;gap:9px;margin-top:12px;flex-wrap:wrap;align-items:center}
+.bar{display:flex;gap:9px;margin-top:12px;flex-wrap:wrap;align-items:center;justify-content:center}
 input[type=search],select{padding:7px 12px;border:1px solid var(--line);border-radius:9px;
   font-size:13px;background:var(--bg3);color:var(--tx);outline:none;font-family:inherit;
   transition:border-color .15s,box-shadow .15s,background .15s}
@@ -386,7 +388,7 @@ label.chk:has(input:checked){color:var(--brand)}
 .saver.bad{color:var(--warn);background:rgba(255,176,32,.1);border-color:rgba(255,176,32,.32)}
 
 /* ---- 顶部动作按钮 ---- */
-.acts{margin-left:auto;display:flex;gap:8px;align-items:center;flex:none}
+.acts{display:flex;gap:8px;align-items:center;flex:none}
 .btn-act{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:10px;
   border:1px solid var(--line);background:var(--bg3);color:var(--tx);font-size:12.5px;
   font-family:inherit;cursor:pointer;white-space:nowrap;transition:.16s;letter-spacing:.2px}
@@ -585,7 +587,7 @@ main{padding:20px 30px 64px;max-width:1680px;margin:0 auto}
 .btn-done:hover{border-color:var(--ok);color:var(--ok);background:rgba(47,227,164,.1)}
 .btn-done.on{background:rgba(47,227,164,.16);border-color:rgba(47,227,164,.5);color:var(--ok)}
 .btn-done.on:hover{background:rgba(47,227,164,.24);color:var(--ok)}
-.btn-reset{margin-left:auto}
+.btn-reset{margin-left:6px}
 .btn-reset:hover{border-color:var(--line2);color:var(--tx)}
 
 /* ---- 群卡片（details）---- */
@@ -648,14 +650,17 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
   cursor:pointer;transition:.15s;opacity:.5}
 .grp>summary:hover .btn-mute{opacity:1}
 .btn-mute:hover{color:var(--hot);border-color:rgba(255,95,109,.3);background:rgba(255,95,109,.1)}
-.mutedbox{margin-left:2px}
+/* details 自己当定位祖先 —— 顶栏是 position:relative，不这样写的话
+   下拉面板会跑到顶栏左上角去，而不是贴着按钮底下 */
+.mutedbox{margin-left:2px;position:relative}
 .mutedbox>summary{cursor:pointer;list-style:none;font-size:12px;color:var(--tx2);
   padding:5px 11px;border:1px solid var(--line);border-radius:999px;background:var(--bg3);
   white-space:nowrap;transition:.15s}
 .mutedbox>summary::-webkit-details-marker{display:none}
 .mutedbox>summary:hover{border-color:var(--line2);color:var(--tx)}
 .mutedbox[open]>summary{border-color:rgba(22,227,165,.4);color:var(--brand)}
-.mutedpanel{position:absolute;margin-top:6px;background:var(--bg2);border:1px solid var(--line2);
+.mutedpanel{position:absolute;right:0;left:auto;margin-top:6px;background:var(--bg2);
+  border:1px solid var(--line2);
   border-radius:12px;box-shadow:var(--shadow);padding:8px;min-width:280px;
   max-height:320px;overflow:auto;z-index:30;max-width:calc(100vw - 60px)}
 .mutedpanel .mrow{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;
@@ -669,7 +674,7 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
 .btn-back:hover{border-color:var(--ok);color:var(--ok);background:rgba(47,227,164,.1)}
 /* 页脚：服务在后台跑，这里给个低调的停止入口 */
 .foot{max-width:1680px;margin:-8px auto 34px;padding:0 30px;display:none;
-  align-items:center;gap:10px;flex-wrap:wrap;
+  align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;
   color:var(--tx3);font-size:12px;line-height:1.75}
 .foot .sp{opacity:.5}
 .foot a{color:var(--tx3);text-decoration:none;border-bottom:1px dashed currentColor;
@@ -705,18 +710,15 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
   <span class="ub-x" id="updSkip" title="这次不提醒">✕</span>
 </div>
 <header>
+  <div class="hin">
   <div class="brand">
     <img src="%%LOGO%%" alt="小贾">
-    <div class="tt">
-      <div class="hrow">
-        <h1>%%BRAND%%<span class="tag">QQ · 微信</span></h1>
-        <div class="clock" title="上次抓取完成于 %%NOW%%">
-          <span class="lbl">更新时间</span>%%CLOCK%%
-        </div>
-      </div>
-      <div class="sub">查看最近 <input type="number" id="daysIn" class="days"
-        min="1" max="365" step="1" value="%%DAYSN%%" title="%%DROPTIP%%"> 天</div>
+    <h1>%%BRAND%%<span class="tag">QQ · 微信</span></h1>
+    <div class="clock" title="上次抓取完成于 %%NOW%%">
+      <span class="lbl">更新时间</span>%%CLOCK%%
     </div>
+    <div class="sub">查看最近 <input type="number" id="daysIn" class="days"
+      min="1" max="365" step="1" value="%%DAYSN%%" title="%%DROPTIP%%"> 天</div>
     <div class="acts" id="acts">
       <button class="btn-act ic" id="btnTheme" title="切换深色 / 浅色"><span id="thIc">☾</span></button>
       <button class="btn-act primary" id="btnRefresh">↻ 刷新数据</button>
@@ -742,6 +744,7 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
       <div class="mutedpanel" id="mutedList"></div>
     </details>
     <button class="btn-reset" id="resetDone">重置已完成</button>
+  </div>
   </div>
 </header>
 <div class="warn" id="warn" style="display:none">
