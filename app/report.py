@@ -287,7 +287,9 @@ label.chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:va
 .offtag:hover{background:#fee2e2}
 #srcModal .mbox{width:min(660px,100%)}
 .srcblk{border:1px solid var(--line);border-radius:11px;padding:12px 14px;margin-bottom:12px}
-.srcblk.off{background:#fbfbfc;opacity:.62}
+.srcblk.off{background:#fbfbfc}
+/* 只淡化说明和表单，开关要保持清晰 —— 否则看不出"还能再打开" */
+.srcblk.off .desc,.srcblk.off .fld{opacity:.5}
 .srcblk .sh{display:flex;align-items:center;gap:9px;margin-bottom:2px}
 .srcblk .sh b{font-size:13.5px}
 .srcblk .sh .st{font-size:11.5px;color:var(--tx2);margin-left:auto;margin-right:2px}
