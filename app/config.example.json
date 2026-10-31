@@ -1,7 +1,7 @@
 {
   "days": 30,
   "qq": {
-    "enabled": true,
+    "enabled": false,
     "uin": "",
     "napcat_dir": "",
     "exe": "",

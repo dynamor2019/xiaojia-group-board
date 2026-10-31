@@ -511,6 +511,14 @@ label.chk:has(input:checked){color:var(--brand)}
 .srcblk .sh .st{font-size:11.5px;color:var(--tx3);margin-left:auto;margin-right:2px}
 .srcblk.off .sh .st{color:var(--hot)}
 .srcblk .desc{font-size:11.5px;color:var(--tx2);line-height:1.65;margin:3px 0 10px}
+/* 打开 QQ 之前的风险说明：不跟着 .off 一起淡下去 —— 越是关着的时候越该看清 */
+.risk{margin:8px 0 10px;padding:10px 12px;border-radius:10px;font-size:11.5px;
+  line-height:1.72;color:var(--tx2);
+  background:rgba(255,176,32,.07);border:1px solid rgba(255,176,32,.26)}
+.risk .rh{font-size:12px;font-weight:700;color:var(--warn)}
+.risk .rh2{font-size:12px;font-weight:700;color:var(--warn);margin:9px 0 2px}
+.risk .rb b{color:var(--tx);font-weight:650}
+.risk .rb2{margin-top:7px;font-size:11px;color:var(--tx3);line-height:1.65}
 .fld{display:flex;gap:9px;align-items:center;margin:8px 0 0}
 .fld>label{flex:none;width:64px;font-size:12px;color:var(--tx2)}
 .fld select,.fld input[type=text]{flex:1;min-width:0;font-family:inherit;font-size:12.5px;
@@ -788,7 +796,18 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
           <b>QQ 群</b>
           <span class="st" id="qqSt">已开启</span>
         </div>
-        <div class="desc">靠 NapCat 读本机 QQ 的消息。关掉就完全不碰 QQ —— 觉得有风险时用这个。</div>
+        <div class="risk">
+          <div class="rh">⚠ 开之前先看完这段</div>
+          <div class="rb">QQ 这路是让 NapCat 用你的账号读本机消息，<b>不是官方接入</b>。
+            被腾讯判定「登录环境异常」、限制登录的风险是真实存在的。</div>
+          <div class="rh2">万一被限制了 —— 别去走官方申诉</div>
+          <div class="rb">官方申诉流程长、成功率低，不建议在那儿耗。直接拿手机在应用商店搜
+            <b>「国家网络身份认证」</b>，装公安部那个 App，按提示刷身份证 + 人脸申领网号/网证，
+            做完核验再登录，一般当天就解开。</div>
+          <div class="rb2">只从应用商店装：App Store、华为、小米、vivo、荣耀、应用宝。
+            别人发的下载链接不要点，「代办解封」一律是诈骗。</div>
+        </div>
+        <div class="desc">关掉就完全不碰 QQ —— 不启动 NapCat、不拉起 QQ 进程。<b>默认是关的</b>，要用再打开。</div>
         <div class="fld">
           <label>QQ 程序</label>
           <select id="qqExe"></select>
@@ -1142,8 +1161,10 @@ function renderCol(src, qs, gv, ot, hd) {
   }
   const order = [...buckets.keys()].sort((a, b) => buckets.get(b).length - buckets.get(a).length);
 
-  /* 空壳群：整群都被「已完成」收起来了。群得留着，不然看板上就是"群怎么少了" */
-  const ghosts = SHADOW.filter(s => (s.src || 'QQ') === src)
+  /* 空壳群：整群都被「已完成」收起来了。群得留着，不然看板上就是"群怎么少了"。
+     但这一侧读取关着的时候不画 —— 一个已经不读的源还挂着「N 条已完成」的卡片很费解。 */
+  const offSide = !!SRCOFF[src === 'QQ' ? 'qq' : 'wechat'];
+  const ghosts = offSide ? [] : SHADOW.filter(s => (s.src || 'QQ') === src)
     .filter(s => !muted.has(src + '|' + s.gid))
     .filter(s => !gv || s.g === gv)
     .filter(s => {
@@ -1160,7 +1181,9 @@ function renderCol(src, qs, gv, ot, hd) {
   document.getElementById('list' + sfx).innerHTML = nGrp
     ? order.map(g => groupHTML(g, buckets.get(g), qs)).join('') + ghosts.join('')
     : '<div class="col-none">' + (
-        DATA.length ? '没有匹配的记录'
+        SRCOFF[src === 'QQ' ? 'qq' : 'wechat']
+          ? '这一路的读取是关着的 —— 点顶上的「数据源」可以打开，开之前先看一眼那段风险说明'
+        : DATA.length ? '没有匹配的记录'
         : (done.size ? '这一侧都标记成「完成」了 —— 点右上角「重置已完成」再刷新，就回来了'
         : (SERVED ? '还没有数据 —— 点右上角「刷新数据」抓一次'
                   : '还没有数据 —— 双击「启动看板.cmd」后点「刷新数据」'))
@@ -1735,7 +1758,7 @@ def build(today: date, days: int = 30, sources=None,
     # 数据源状态：哪一侧被关掉了（列头挂个「读取已关闭」标签）
     src_off = {"qq": False, "wechat": False}
     try:
-        src_off["qq"] = not bool(settings.get("qq", "enabled", True))
+        src_off["qq"] = not bool(settings.get("qq", "enabled", False))
         src_off["wechat"] = not bool(settings.get("wechat", "enabled", True))
     except Exception:
         pass

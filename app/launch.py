@@ -216,7 +216,7 @@ def cmd_update() -> int:
         r = subprocess.run([sys.executable, "-E", "-X", "utf8",
                             str(APP_DIR / "update_wx.py")], cwd=str(APP_DIR))
         rc = r.returncode or rc
-    if settings.get("qq", "enabled", True):
+    if settings.get("qq", "enabled", False):
         say("\n--- QQ ---")
         r = subprocess.run([sys.executable, "-E", "-X", "utf8",
                             str(APP_DIR / "auto.py"), "--start"], cwd=str(APP_DIR))

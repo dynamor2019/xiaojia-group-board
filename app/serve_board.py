@@ -124,12 +124,13 @@ class RefreshJob:
         if settings.get("wechat", "enabled", True):
             steps.append(("微信", [sys.executable, "-E", "-X", "utf8",
                                    str(APP_DIR / "update_wx.py")]))
-        if settings.get("qq", "enabled", True):
+        if settings.get("qq", "enabled", False):
             steps.append(("QQ", [sys.executable, "-E", "-X", "utf8",
                                  str(APP_DIR / "auto.py"), "--start"]))
         try:
             if not steps:
-                self.add("QQ 和微信都被关掉了，没东西可抓。改 config.json 里的 enabled 再试。")
+                self.add("QQ 和微信都关着，没东西可抓 —— 点看板右上角「数据源」，"
+                         "把要用的那一路打开（QQ 那边开之前先看一眼风险说明）。")
                 self.rc = 1
                 return
             rc = 0
@@ -338,6 +339,8 @@ def sources_info() -> dict:
         )
 
     hints: list[str] = []
+    if not settings.get("qq", "enabled", False):
+        hints.append("QQ 读取现在是关着的（默认就这样）。要开就先看完下面那段风险说明，再拨开关")
     if len(cands) > 1 and not wx_dir:
         who = ""
         try:
@@ -357,7 +360,7 @@ def sources_info() -> dict:
 
     return {
         "qq": {
-            "enabled": bool(settings.get("qq", "enabled", True)),
+            "enabled": bool(settings.get("qq", "enabled", False)),
             "uin": qq_uin, "uin_list": uins,
             "default": qq_uin or (uins[0] if uins else ""),
             "exe": qq_exe, "exe_list": exes,
@@ -471,7 +474,7 @@ def doctor() -> dict:
     else:
         add("config.json", False, "还没有（用默认配置也能跑，想改参数就建一个）")
 
-    if settings.get("qq", "enabled", True):
+    if settings.get("qq", "enabled", False):
         nd = settings.napcat_dir()
         ok = nd.exists() and (nd / "NapCatWinBootMain.exe").exists()
         if ok:
@@ -496,7 +499,8 @@ def doctor() -> dict:
             add("QQ 版本", True,
                 f"{qv}　（QQ 刚自动升级过、又突然抓不到，先更新 NapCat 再试）")
     else:
-        add("QQ 侧", True, "已关闭 —— 看板右上角「数据源」里可以打开")
+        add("QQ 侧", True,
+            "默认关闭 —— 想用就去「数据源」打开（开之前先看那段风险说明和出问题怎么办）")
 
     if settings.get("wechat", "enabled", True):
         db = settings.wechat_db_dir()

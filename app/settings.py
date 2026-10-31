@@ -26,7 +26,9 @@ EXAMPLE_FILE = APP_DIR / "config.example.json"
 DEFAULTS: dict = {
     "days": 30,                      # 只看最近多少天
     "qq": {
-        "enabled": True,
+        # 默认关。QQ 那一路是拿你的号去读本机消息，有被判异常、限制登录的风险，
+        # 得让用户自己看明白再打开 —— 开的地方（数据源面板）上面就写着风险和解法。
+        "enabled": False,
         "uin": "",                   # 你的 QQ 号，快速登录用
         "napcat_dir": "",            # NapCat 解压目录；留空则用根目录下的 napcat/
         "exe": "",                   # QQ.exe 路径；留空自动找常见位置
