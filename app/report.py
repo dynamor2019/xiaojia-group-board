@@ -786,7 +786,7 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
 
 <div class="modal" id="srcModal">
   <div class="mbox">
-    <div class="mh"><b>数据源</b><span id="srcClose">✕</span></div>
+    <div class="mh"><b id="srcTitle">数据源</b><span id="srcClose">✕</span></div>
     <div class="mb">
       <div class="srchint" id="srcHint" style="display:none"></div>
 
@@ -838,7 +838,7 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
       </div>
 
       <div class="srcmsg" id="srcMsg"></div>
-      <div style="font-size:11.5px;color:var(--tx2);line-height:1.7;margin-top:4px">
+      <div id="srcTip" style="font-size:11.5px;color:var(--tx2);line-height:1.7;margin-top:4px">
         改完点「保存」，再点一次 <b>↻ 刷新数据</b> 才会按新设置去读。<br>
         这些设置写在本机 <code>config.json</code> 里，不上传。
       </div>
@@ -1438,9 +1438,28 @@ const wxDir = document.getElementById('wxDir');
 const wxPathShow = document.getElementById('wxPathShow');
 let SRC = null;
 
+/* 第一次用：配置里还没有过任何人的选择时，页面一打开就把面板弹出来。
+   选完点「保存」，面板自己关掉，之后不再弹。 */
+let SRC_FIRST = false;
+
+function srcMode() {
+  document.getElementById('srcTitle').textContent =
+    SRC_FIRST ? '先确认一下数据源' : '数据源';
+  document.getElementById('srcCancel').style.display = SRC_FIRST ? 'none' : '';
+  document.getElementById('srcTip').innerHTML = SRC_FIRST
+    ? '第一次用，确认完点 <b>保存</b> —— 存完这个面板会自己关掉，' +
+      '再点右上角 <b>↻ 刷新数据</b> 抓第一次。'
+    : '改完点「保存」，再点一次 <b>↻ 刷新数据</b> 才会按新设置去读。<br>' +
+      '这些设置写在本机 <code>config.json</code> 里，不上传。';
+}
+
 function srcOpen(on) {
   srcModal.classList.toggle('show', !!on);
   if (on) { srcMsg.className = 'srcmsg'; srcLoad(); }
+  // 首次面板被手动关掉：同一个标签页里别再弹，不然每次刷新都糊一脸
+  else if (SRC_FIRST) {
+    try { sessionStorage.setItem('srcdismiss', '1'); } catch (e) {}
+  }
 }
 
 function srcMsgShow(text, kind) {
@@ -1508,6 +1527,8 @@ function srcRender(d) {
   wxDir.value = d.wechat.default || d.wechat.db_dir || d.wechat.current || '';
   wxPathShow.value = wxDir.value || '';
 
+  SRC_FIRST = !!d.first;
+  srcMode();
   srcMsg.className = 'srcmsg';
 }
 
@@ -1558,6 +1579,9 @@ function srcBody() {
 function srcSave(quiet) {
   if (!SRC) { srcMsgShow('还没读到当前设置，等一下再点保存。', 'err'); return; }
   const body = srcBody();
+  // 只有人点「保存」才算做完首次设置；拨开关走的静默保存不算
+  body.setup = !quiet;
+  const wasFirst = SRC_FIRST && !quiet;
   if (!body.qq.uin && (SRC.qq.uin_list || []).length) {
     srcMsgShow('QQ 号没选上，重新点一下下拉框。', 'err');
     return;
@@ -1572,6 +1596,13 @@ function srcSave(quiet) {
     if (!quiet) { btn.disabled = false; btn.textContent = '保存'; }
     if (!x.ok) { srcMsgShow(x.error || '没保存成功', 'err'); return; }
     srcRender(x.info);
+    if (wasFirst) {
+      /* 首次设置：说一句"存好了，下一步点刷新"，然后面板自己关掉 ——
+         用户要的是"选完就完事"，不该再让他自己找 ✕ */
+      srcMsgShow('已保存 —— 接着点右上角「↻ 刷新数据」抓第一次', 'ok');
+      setTimeout(() => srcOpen(false), 1100);
+      return;
+    }
     srcMsgShow(quiet
       ? '已记住。点「↻ 刷新数据」按新设置读一次。'
       : '已保存。点右上角「↻ 刷新数据」按新设置读一次，看板上就会跟着变。', 'ok');
@@ -1600,7 +1631,18 @@ if (document.getElementById('btnSrc')) {
   const offWX = document.getElementById('offWX');
   if (SRCOFF.qq) { offQQ.style.display = ''; offQQ.onclick = () => srcOpen(true); }
   if (SRCOFF.wechat) { offWX.style.display = ''; offWX.onclick = () => srcOpen(true); }
-  // 不再主动弹面板 —— 默认值已经选好了，天天弹等于天天问同一句话
+  // 平时不主动弹面板 —— 默认值已经选好，天天弹等于天天问同一句话。
+  // 只有"这台机器还没人做过选择"时弹一次，见下面的 srcFirstCheck
+
+  /* 首次使用：一进来就把数据源面板摆出来，选完保存它自己关掉 */
+  let srcDismissed = false;
+  try { srcDismissed = sessionStorage.getItem('srcdismiss') === '1'; } catch (e) {}
+  if (SERVED && !DEMO) {
+    fetch('/api/sources').then(r => r.json()).then(d => {
+      SRC = d; srcRender(d);
+      if (d.first && !srcDismissed) srcOpen(true);
+    }).catch(() => {});
+  }
 }
 
 /* ---------- 更新提示（每天一次心跳，结果由服务端缓存） ---------- */

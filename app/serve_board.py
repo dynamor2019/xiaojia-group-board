@@ -315,6 +315,18 @@ NAPJOB = NapCatJob()
 
 
 # ------------------------------------------------------------------ 数据源
+def _src_configured() -> bool:
+    """这台机器上是不是已经有人替这个面板做过选择。
+
+    判据是"配置里有具体的东西"（QQ 号 / 微信目录），而不是 config.json 在不在 ——
+    新装时 `ensure_config()` 会照抄一份 example，文件在、内容还是空的。
+    """
+    if not settings.CONFIG_FILE.exists():
+        return False
+    return bool(str(settings.get("qq", "uin") or "").strip()
+                or str(settings.get("wechat", "db_dir") or "").strip())
+
+
 def sources_info() -> dict:
     """看板「数据源」面板要的一切：开关、当前值、所有候选。
 
@@ -339,6 +351,9 @@ def sources_info() -> dict:
         )
 
     hints: list[str] = []
+    first = not bool(settings.get("board", "setup_done", False)) and not _src_configured()
+    if first:
+        hints.append("第一次用：确认下面两路读不读、读哪个号，点「保存」就算完事")
     if not settings.get("qq", "enabled", False):
         hints.append("QQ 读取现在是关着的（默认就这样）。要开就先看完下面那段风险说明，再拨开关")
     if len(cands) > 1 and not wx_dir:
@@ -373,6 +388,7 @@ def sources_info() -> dict:
             "candidates": cands,
         },
         "hints": hints,
+        "first": first,
     }
 
 
@@ -395,6 +411,11 @@ def save_sources(body: dict) -> dict:
     patch: dict = {}
     qq = body.get("qq") or {}
     wx = body.get("wechat") or {}
+
+    # 只有"人点了保存"才算走完首次设置。拨开关、换下拉走的是静默保存，
+    # 那种顺手一拨不该让下次进来看不到这个面板 —— 那等于替他做了决定。
+    if body.get("setup"):
+        patch["board"] = {"setup_done": True}
 
     if "enabled" in qq:
         patch.setdefault("qq", {})["enabled"] = bool(qq["enabled"])

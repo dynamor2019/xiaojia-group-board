@@ -44,6 +44,9 @@ DEFAULTS: dict = {
     "board": {
         "port": 8766,
         "open_browser": True,
+        # 第一次打开时自动弹「数据源」面板，人点过保存才置 true。
+        # 老用户没有这个键，但配置里已经有号/目录，也不会被弹（见 serve_board._src_configured）
+        "setup_done": False,
     },
     "update": {
         "enabled": True,             # 每天问一次 GitHub 有没有新版本

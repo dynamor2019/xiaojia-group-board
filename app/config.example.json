@@ -16,7 +16,8 @@
   },
   "board": {
     "port": 8766,
-    "open_browser": true
+    "open_browser": true,
+    "setup_done": false
   },
   "update": {
     "enabled": true,
