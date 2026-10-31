@@ -347,8 +347,13 @@ TPL = """<!DOCTYPE html>
 :root[data-theme=apple] .btn-act:not(.primary):not(.src):hover{
   background:var(--bg4);border-color:var(--line2)}
 :root[data-theme=apple] .btn-act.primary{border-radius:980px;
-  box-shadow:0 1px 2px rgba(0,0,0,.06),0 6px 18px rgba(var(--brand-rgb),.22)}
-:root[data-theme=apple] .btn-act.src{border-radius:980px}
+  background:rgba(var(--brand-rgb),.13);color:var(--brand);
+  border-color:rgba(var(--brand-rgb),.34);
+  box-shadow:none}   /* 那圈 18px 的外扩投影会让它看起来比旁边大一号 */
+:root[data-theme=apple] .btn-act.primary:hover{background:rgba(var(--brand-rgb),.19);
+  filter:none}
+:root[data-theme=apple] .btn-act.src{border-radius:980px;
+  background:var(--bg2);border-color:var(--line2);color:var(--tx)}
 :root[data-theme=apple] .btn-act.ic{min-width:34px}
 /* 卡片：圆角放大一档，阴影极淡但有两层（近影定边、远影给层高） */
 :root[data-theme=apple] .stat{background:var(--bg2);border-color:transparent;
@@ -470,6 +475,7 @@ label.chk:has(input:checked){color:var(--brand)}
 .acts{display:flex;gap:8px;align-items:center;flex:none}
 .btn-act{display:inline-flex;align-items:center;gap:6px;padding:0 13px;border-radius:10px;
   min-height:34px;   /* 高度写在盒子上，不靠 padding + 行高凑：图标、字号一变就会差几像素 */
+  line-height:1;     /* 行盒也钉死：`↻` 这类符号的行高度和汉字不一样，不锁就高低不齐 */
   border:1px solid var(--line);background:var(--bg3);color:var(--tx);
   font-size:12.5px;font-weight:600;   /* 三个按钮同一套字号字重，主次只靠底色和阴影区分 */
   font-family:inherit;cursor:pointer;white-space:nowrap;transition:.16s;letter-spacing:.2px}
