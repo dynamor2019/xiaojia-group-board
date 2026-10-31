@@ -183,6 +183,32 @@ def local_rev() -> str:
     return git_head() or str(load().get("installed_sha") or "")
 
 
+def remote_in_local(sha: str) -> bool | None:
+    """远端那个提交是不是**已经在本地历史里**（= 我们并不落后）。
+
+    只比 SHA 相等是不够的：本地 commit / pull 之后 HEAD 会走到远端前面，
+    这时 `head != cur` 成立，但方向是"本地更新"，不是"有新版本"。
+    缓存里那个 remote_sha 又是几小时前问的，于是看板会理直气壮地喊"有新版本"，
+    点开却一条差异都拿不出来 —— 用户看到的是一张空白弹层（v1.5.3 修）。
+
+    有 .git 就能在本地判方向，一次 merge-base 二十毫秒，不用联网。
+    解压版没有 git，只能返回 None，退回原来的 SHA 比较。
+    """
+    if not sha or not is_git():
+        return None
+    try:
+        p = subprocess.run([_git_exe(), "-C", str(ROOT), "merge-base",
+                            "--is-ancestor", sha, "HEAD"],
+                           capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if p.returncode == 0:
+        return True
+    if p.returncode == 1:
+        return False
+    return None
+
+
 # ------------------------------------------------------------------ 检查
 def due() -> bool:
     if not enabled():
@@ -261,6 +287,10 @@ def _summary(st: dict, cached: bool = False) -> dict:
     notes = [n for n in (st.get("notes") or []) if isinstance(n, dict)]
     recent = [n for n in (st.get("recent") or []) if isinstance(n, dict)]
     has = bool(enabled() and cur and head and head != cur and head != st.get("ignored"))
+    # SHA 不等还要看方向：远端那个提交如果早就在本地历史里，说明是本地更新，
+    # 不是"有新版本"。不判这个，本地 commit 完就会跳出一张空白更新弹层。
+    if has and remote_in_local(head):
+        has = False
     return {
         "enabled": enabled(),
         "ok": not st.get("error"),
@@ -290,6 +320,11 @@ def check(force: bool = False) -> dict:
     if not enabled():
         return _summary(st, cached=True)
     if not force and not due():
+        # 本地 HEAD 已经不是上次检查时那个了（自己 commit / pull 过）：缓存一定过期，
+        # "有没有更新"可能判反，弹层也可能缺内容。这时候重问一次，一天最多多一次。
+        head_now = git_head()
+        if head_now and head_now != st.get("installed_sha"):
+            return check(force=True)
         return _summary(st, cached=True)
 
     try:

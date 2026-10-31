@@ -1887,27 +1887,27 @@ function updRow(x) {
 function updRender() {
   if (!UPD) return;
   const has = !!UPD.has_update;
-  /* 有更新就看"差的那几条"，没有更新就看"最近几条" —— 弹层不能空着。
-     接口万一没给 recent（老格式），退回 notes，别让弹层变成空白。 */
-  const items = has ? (UPD.notes || [])
+  const diff = has ? (UPD.notes || []) : [];
+  /* 有差异列差异；差异拿不到（老缓存 / 老格式）就退到"最近几次改动"。
+     弹层最不该出现的东西就是一句「没写提交说明」—— 提交说明一直都有。 */
+  const list = diff.length ? diff
     : ((UPD.recent && UPD.recent.length) ? UPD.recent : (UPD.notes || []));
-  const n = items.length;
+  const n = list.length, fromDiff = diff.length > 0;
+  const em = n ? '<em>' + (fromDiff ? n + ' 条改动' : '最近 ' + n + ' 次改动') + '</em>' : '';
   const meta = '<div class="updmeta">' +
     (has
       ? '<b>v' + esc(UPD.version || '') + '</b><span>你的版本</span><i>→</i>' +
         '<b>' + esc(UPD.latest || '') + '</b>' +
-        '<span>' + esc(UPD.latest_date || '远端最新') + '</span>' +
-        (n ? '<em>' + n + ' 条改动</em>' : '')
+        '<span>' + esc(UPD.latest_date || '远端最新') + '</span>'
       : '<b>v' + esc(UPD.version || '') + '</b><span>已经是最新版</span>' +
-        (UPD.latest_date ? '<span>最新提交 ' + esc(UPD.latest_date) + '</span>' : '') +
-        (n ? '<em>最近 ' + n + ' 次改动</em>' : '')) +
-    '</div>';
-  updList.innerHTML = meta + (items.map(updRow).join('')
+        (UPD.latest_date ? '<span>最新提交 ' + esc(UPD.latest_date) + '</span>' : '')) +
+    em + '</div>';
+  updList.innerHTML = meta + (list.map(updRow).join('')
     || '<div class="row"><div class="cm">这次没写提交说明 —— 可以直接更，' +
        '想先看改了什么就点下面「在 GitHub 上看」。</div></div>');
   document.getElementById('updGit').href = UPD.url || '#';
   const ttl = document.getElementById('updTitle');
-  if (ttl) ttl.textContent = has ? '更新内容' : '最近的改动';
+  if (ttl) ttl.textContent = fromDiff ? '更新内容' : '最近的改动';
   const go = document.getElementById('updGo2');
   if (go) go.style.display = has ? '' : 'none';
 }
