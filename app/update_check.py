@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -186,6 +187,32 @@ def due() -> bool:
     return (time.time() - float(load().get("checked_at") or 0)) >= _hours() * 3600
 
 
+_PT = re.compile(r"^(?:[-*·]|\d+[.)、]|[①②③④⑤⑥])\s*")
+
+
+def commit_points(lines: list, limit: int = 6) -> list[str]:
+    """把提交正文压成几条要点。
+
+    git 的正文是硬换行的（一行七八十字就断），直接按行拆会把一句话切成两截，
+    读起来像电报。所以先合并续行（中文之间不加空格），再只挑列表项 ——
+    「1.」「- 」开头的那些就是改动清单，前面那句引言行不必占位。
+    """
+    merged: list[str] = []
+    for raw in lines:
+        t = str(raw).strip()
+        if not t:
+            continue
+        if _PT.match(t) or not merged:
+            merged.append(t)
+        else:
+            merged[-1] += t
+    pts = [m for m in merged if _PT.match(m)]
+    if pts:
+        out = [_PT.sub("", m).strip() for m in pts]
+        return [x for x in out if x][:limit]
+    return merged[:2]
+
+
 def fetch_commits(n: int = 30) -> list[dict]:
     data = _get_json(f"https://api.github.com/repos/{_repo()}/commits"
                      f"?per_page={n}&sha={BRANCH}")
@@ -193,11 +220,15 @@ def fetch_commits(n: int = 30) -> list[dict]:
     for c in data or []:
         cm = c.get("commit") or {}
         msg = (cm.get("message") or "").strip().splitlines()
+        # 正文也带上：只看首行等于只说了一半，用户想知道"到底改了什么"
+        body = commit_points([ln for ln in msg[1:]
+                              if not ln.strip().lower().startswith(("co-authored-by", "signed-off-by"))])
         out.append({
             "sha": c.get("sha", ""),
             "short": (c.get("sha") or "")[:8],
             "date": _fmt((cm.get("author") or {}).get("date", "")),
             "msg": (msg[0][:140] if msg else "(无提交说明)"),
+            "body": body[:12],
         })
     return out
 

@@ -338,12 +338,18 @@ TPL = """<!DOCTYPE html>
   font-weight:600;letter-spacing:-.2px}
 :root[data-theme=apple] h1 .tag{background:var(--bg4);border-color:transparent;
   color:var(--tx2);font-weight:500;letter-spacing:.2px}
-/* 按钮：胶囊形，白底细描边，主按钮靠 Apple 蓝的柔和投影浮起来 */
-:root[data-theme=apple] .btn-act{border-radius:980px;background:var(--bg2);
-  border-color:var(--line2);font-weight:500;letter-spacing:.1px}
-:root[data-theme=apple] .btn-act:hover{background:var(--bg4);border-color:var(--line2)}
-:root[data-theme=apple] .btn-act.primary{border-color:transparent;
+/* 按钮：胶囊形。
+   注意用 :not(.primary):not(.src) 圈定范围 —— `:root[data-theme=apple] .btn-act`
+   的特异性(0,3,0) 高于 `.btn-act.primary`(0,2,0)，直接写会连主按钮的渐变底都吃掉，
+   结果就是白底配白字：屏幕上只剩一个空胶囊。这一版就是这么踩的。 */
+:root[data-theme=apple] .btn-act:not(.primary):not(.src){
+  border-radius:980px;background:var(--bg2);border-color:var(--line2);
+  font-weight:500;letter-spacing:.1px}
+:root[data-theme=apple] .btn-act:not(.primary):not(.src):hover{
+  background:var(--bg4);border-color:var(--line2)}
+:root[data-theme=apple] .btn-act.primary{border-radius:980px;
   box-shadow:0 1px 2px rgba(0,0,0,.06),0 6px 18px rgba(var(--brand-rgb),.22)}
+:root[data-theme=apple] .btn-act.src{border-radius:980px}
 :root[data-theme=apple] .btn-act.ic{min-width:34px}
 /* 卡片：圆角放大一档，阴影极淡但有两层（近影定边、远影给层高） */
 :root[data-theme=apple] .stat{background:var(--bg2);border-color:transparent;
@@ -553,6 +559,9 @@ label.chk:has(input:checked){color:var(--brand)}
 .modal .mb .cd{color:var(--tx3);font-size:11.5px;flex:none;width:78px;padding-top:2px;
   font-family:ui-monospace,Consolas,monospace}
 .modal .mb .cm{flex:1;min-width:0;word-break:break-word}
+/* 提交说明的正文要点：小一号、灰一档，别跟标题抢 */
+.modal .mb .pts{margin:5px 0 0;padding-left:15px;list-style:disc}
+.modal .mb .pts li{font-size:11.5px;line-height:1.7;color:var(--tx2);margin:1px 0}
 .updmeta{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;
   background:rgba(var(--brand-rgb),.07);border:1px solid rgba(var(--brand-rgb),.22);border-radius:10px;
   padding:9px 12px;margin-bottom:10px;font-size:12.5px;color:var(--brand)}
@@ -1763,9 +1772,15 @@ function updRender() {
     '<span>' + esc(UPD.latest_date || '远端最新') + '</span>' +
     (n ? '<em>' + n + ' 条改动</em>' : '') +
     '</div>';
-  updList.innerHTML = meta + (UPD.notes.map(x =>
-    '<div class="row"><div class="cd">' + esc(x.date || '') + '</div>' +
-    '<div class="cm">' + esc(x.msg || '') + '</div></div>').join('')
+  updList.innerHTML = meta + (UPD.notes.map(x => {
+    /* 首行是标题，正文按行拆成要点 —— 提交说明里那些「- 」开头的行就是改动清单 */
+    const body = (x.body || []).filter(l => l && !/^rem |^#/.test(l)).slice(0, 6);
+    return '<div class="row"><div class="cd">' + esc(x.date || '') + '</div>' +
+      '<div class="cm">' + esc(x.msg || '') +
+      (body.length ? '<ul class="pts">' + body.map(l =>
+        '<li>' + esc(l.replace(/^[-*·]\\s*/, '')) + '</li>').join('') + '</ul>' : '') +
+      '</div></div>';
+  }).join('')
     || '<div class="row"><div class="cm">这次没写提交说明 —— 可以直接更，' +
        '想先看改了什么就点下面「在 GitHub 上看」。</div></div>');
   document.getElementById('updGit').href = UPD.url || '#';
