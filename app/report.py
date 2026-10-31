@@ -101,6 +101,9 @@ def sev_seg(text: str) -> str:
         return ""
     groups: list[str] = []
     x = 0.0
+    # 画笔的右边界要单独记：不同字符的落墨宽度不一样（数字到 22、冒号到 13），
+    # 按"字宽减一点"算总宽会把最后一个字切掉 —— 之前就是这么缺了一角的。
+    xr = 10.0
     for ch in str(text):
         if ch in _SEG_ON:
             on = _SEG_ON[ch]
@@ -108,23 +111,27 @@ def sev_seg(text: str) -> str:
                 f'<polygon class="{"on" if s in on else "off"}" points="{_SEG_PTS[s]}"/>'
                 for s in _SEG_ORDER)
             groups.append(f'<g transform="translate({x:.1f} 0)">{polys}</g>')
+            xr = x + 22
             x += 25
         elif ch == ":":
             groups.append(f'<g transform="translate({x:.1f} 0)">'
                           '<rect class="on" x="9" y="9.6" width="4" height="4"/>'
                           '<rect class="on" x="9" y="24.4" width="4" height="4"/></g>')
+            xr = x + 13
             x += 13
         elif ch == "-":                     # 减号就是中间那根 g
             groups.append(f'<g transform="translate({x:.1f} 0)">'
                           f'<polygon class="on" points="{_SEG_PTS["g"]}"/></g>')
+            xr = x + 19.2
             x += 20
         elif ch == " ":
             x += 9
         else:
             x += 22
-    w = max(x - 5, 10)
+    # 再留 0.8 的余量：SVG 边缘抗锯齿，贴着边画会缺一像素
+    w = max(xr + 0.8, 10)
     label = html.escape(str(text))
-    return (f'<svg class="seg" viewBox="0 0 {w:.0f} 38" role="img" '
+    return (f'<svg class="seg" viewBox="0 0 {w:.1f} 38" role="img" '
             f'aria-label="{label}"><title>{label}</title>'
             + "".join(groups) + "</svg>")
 
@@ -251,7 +258,8 @@ TPL = """<!DOCTYPE html>
       if (m) t = (JSON.parse(decodeURIComponent(m[1])) || {}).theme || '';
     } catch (e) {}
   }
-  if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+  if (t === 'light' || t === 'dark' || t === 'apple')
+    document.documentElement.setAttribute('data-theme', t);
 })();
 </script>
 <style>
@@ -267,9 +275,11 @@ TPL = """<!DOCTYPE html>
   --glass:rgba(11,18,32,.72);
   --on-brand:#04120d;          /* 渐变主按钮上的字：深色主题下用深字才够亮 */
   --hover:rgba(255,255,255,.07);
-  --seg-off:rgba(22,227,165,.12);   /* 数码管没亮的笔画 */
-  --brand-tint:rgba(22,227,165,.10); /* 「数据源」按钮的淡底 */
-  --brand-edge:rgba(22,227,165,.36);
+  --brand-rgb:22,227,165;      /* 品牌色的三通道，光晕/淡底/描边都从这里拼 */
+  --brand2-rgb:10,168,255;
+  --seg-off:rgba(var(--brand-rgb),.12);   /* 数码管没亮的笔画 */
+  --brand-tint:rgba(var(--brand-rgb),.10); /* 「数据源」按钮的淡底 */
+  --brand-edge:rgba(var(--brand-rgb),.36);
 }
 :root[data-theme=light]{
   --bg:#f3f6fb;--bg2:#ffffff;--bg3:#f7f9fd;--bg4:#eef3fb;
@@ -282,10 +292,70 @@ TPL = """<!DOCTYPE html>
   --glass:rgba(255,255,255,.78);
   --on-brand:#ffffff;          /* 浅色主题的渐变更饱和，深字会糊，改用白字 */
   --hover:rgba(16,24,40,.05);
-  --seg-off:rgba(15,157,110,.14);
-  --brand-tint:rgba(15,157,110,.09);
-  --brand-edge:rgba(15,157,110,.38);
+  --brand-rgb:15,157,110;
+  --brand2-rgb:11,127,224;
+  --seg-off:rgba(var(--brand-rgb),.14);
+  --brand-tint:rgba(var(--brand-rgb),.09);
+  --brand-edge:rgba(var(--brand-rgb),.38);
 }
+
+/* ===== 苹果风（macOS Sonoma 那一套）=====================================
+   只换变量 + 少量结构细节，不另写布局 —— 三套主题共用同一份骨架，
+   改一处布局三套一起生效，不会分叉。
+   取色依据（下面变量里才是真值）：页面底 f5f5f7、卡片纯白、正文 1d1d1f、次级 6e6e73、
+   强调色 0071e3（Apple 蓝）、语义色沿用系统色板（红 ff3b30 / 橙 ff9500 / 绿 34c759）。
+   圆角和阴影比另外两套更"软"：按钮做成胶囊、卡片 14px、阴影几乎看不见但撑得住层次。 */
+:root[data-theme=apple]{
+  --bg:#f5f5f7;--bg2:#ffffff;--bg3:#ffffff;--bg4:#ececf0;
+  --line:rgba(0,0,0,.07);--line2:rgba(0,0,0,.16);
+  --tx:#1d1d1f;--tx2:#6e6e73;--tx3:#86868b;
+  --ac:#0071e3;--brand:#0071e3;--brand2:#4a9eff;
+  --hot:#ff3b30;--warn:#ff9500;--ok:#34c759;
+  --qq:#007aff;--wx:#34c759;
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 12px 32px rgba(0,0,0,.06);
+  --glass:rgba(255,255,255,.72);
+  --on-brand:#ffffff;
+  --hover:rgba(0,0,0,.04);
+  --brand-rgb:0,113,227;
+  --brand2-rgb:74,158,255;
+  --seg-off:rgba(var(--brand-rgb),.13);
+  --brand-tint:rgba(var(--brand-rgb),.07);
+  --brand-edge:rgba(var(--brand-rgb),.24);
+}
+/* 底：一层几乎看不见的顶光，苹果页面从不铺满颜色 */
+:root[data-theme=apple] body::before{
+  background:
+    radial-gradient(760px 440px at 50% -12%,rgba(var(--brand-rgb),.05),transparent 62%),
+    linear-gradient(180deg,var(--bg2),transparent 42%)}
+/* 顶栏：真做毛玻璃（另外两套是实色玻璃），滚动时能透出下面的内容 */
+:root[data-theme=apple] header{
+  background:rgba(255,255,255,.72);
+  -webkit-backdrop-filter:saturate(180%) blur(18px);
+  backdrop-filter:saturate(180%) blur(18px)}
+:root[data-theme=apple] header::after{background:var(--line);opacity:1}
+/* 标题：苹果不用渐变字，纯色 + 更紧的字距 */
+:root[data-theme=apple] h1{background:none;-webkit-text-fill-color:currentColor;
+  font-weight:600;letter-spacing:-.2px}
+:root[data-theme=apple] h1 .tag{background:var(--bg4);border-color:transparent;
+  color:var(--tx2);font-weight:500;letter-spacing:.2px}
+/* 按钮：胶囊形，白底细描边，主按钮靠 Apple 蓝的柔和投影浮起来 */
+:root[data-theme=apple] .btn-act{border-radius:980px;background:var(--bg2);
+  border-color:var(--line2);font-weight:500;letter-spacing:.1px}
+:root[data-theme=apple] .btn-act:hover{background:var(--bg4);border-color:var(--line2)}
+:root[data-theme=apple] .btn-act.primary{border-color:transparent;
+  box-shadow:0 1px 2px rgba(0,0,0,.06),0 6px 18px rgba(var(--brand-rgb),.22)}
+:root[data-theme=apple] .btn-act.ic{min-width:34px}
+/* 卡片：圆角放大一档，阴影极淡但有两层（近影定边、远影给层高） */
+:root[data-theme=apple] .stat{background:var(--bg2);border-color:transparent;
+  border-radius:14px;box-shadow:var(--shadow)}
+:root[data-theme=apple] .stat b{font-weight:600;letter-spacing:-.5px}
+:root[data-theme=apple] .grp{border-color:transparent;border-radius:14px;
+  box-shadow:0 1px 2px rgba(0,0,0,.04)}
+:root[data-theme=apple] .grp>summary{border-radius:14px}
+/* 数码管：苹果风不要霓虹光晕，纯色笔画更干净 */
+:root[data-theme=apple] .clock svg.seg{filter:none}
+:root[data-theme=apple] .brand img{border-radius:15px;
+  box-shadow:0 1px 3px rgba(0,0,0,.08);border-color:transparent}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--tx);min-height:100vh;
   font:14px/1.68 "Inter",-apple-system,"Segoe UI","HarmonyOS Sans SC","Microsoft YaHei UI",
@@ -295,17 +365,17 @@ body{margin:0;background:var(--bg);color:var(--tx);min-height:100vh;
 /* 背景：一层极淡的网格 + 两团色晕，深色下才开，浅色不抢戏 */
 body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
   background:
-    radial-gradient(900px 520px at 12% -8%,rgba(22,227,165,.16),transparent 62%),
-    radial-gradient(820px 480px at 92% 4%,rgba(10,168,255,.14),transparent 60%),
+    radial-gradient(900px 520px at 12% -8%,rgba(var(--brand-rgb),.16),transparent 62%),
+    radial-gradient(820px 480px at 92% 4%,rgba(var(--brand2-rgb),.14),transparent 60%),
     linear-gradient(180deg,rgba(255,255,255,.03),transparent 30%);}
-:root:not([data-theme=light]) body::before{
+:root:not([data-theme=light]):not([data-theme=apple]) body::before{
   background:
-    radial-gradient(900px 520px at 12% -8%,rgba(22,227,165,.18),transparent 62%),
-    radial-gradient(820px 480px at 92% 4%,rgba(10,168,255,.16),transparent 60%),
+    radial-gradient(900px 520px at 12% -8%,rgba(var(--brand-rgb),.18),transparent 62%),
+    radial-gradient(820px 480px at 92% 4%,rgba(var(--brand2-rgb),.16),transparent 60%),
     linear-gradient(rgba(126,166,255,.045) 1px,transparent 1px) 0 0/56px 56px,
     linear-gradient(90deg,rgba(126,166,255,.045) 1px,transparent 1px) 0 0/56px 56px,
     linear-gradient(180deg,rgba(255,255,255,.03),transparent 30%);}
-::selection{background:rgba(22,227,165,.3)}
+::selection{background:rgba(var(--brand-rgb),.3)}
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-thumb{background:var(--line2);border-radius:8px;border:2px solid transparent;
   background-clip:padding-box}
@@ -318,20 +388,20 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
 header{padding:15px 30px 13px;background:var(--glass);border-bottom:1px solid var(--line);
   position:relative;z-index:20}
 header::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1px;
-  background:linear-gradient(90deg,transparent,rgba(22,227,165,.55),rgba(10,168,255,.5),transparent);
+  background:linear-gradient(90deg,transparent,rgba(var(--brand-rgb),.55),rgba(var(--brand2-rgb),.5),transparent);
   opacity:.55}
 /* 顶栏内容跟下面的两列对齐：main 是 max-width 1680 含左右各 30 的 padding，
    内容盒正好 1620 —— 这里就照这个数，宽屏上标题和第一张卡片会落在同一条竖线上 */
 .hin{max-width:1620px;margin:0 auto}
 .brand{display:flex;align-items:center;justify-content:center;gap:13px;flex-wrap:wrap}
 .brand img{width:44px;height:44px;border-radius:13px;object-fit:cover;flex:none;
-  border:1px solid var(--line2);box-shadow:0 0 0 3px rgba(22,227,165,.08),0 8px 24px rgba(0,0,0,.35)}
+  border:1px solid var(--line2);box-shadow:0 0 0 3px rgba(var(--brand-rgb),.08),0 8px 24px rgba(0,0,0,.35)}
 h1{margin:0;font-size:20px;font-weight:680;letter-spacing:.3px;line-height:1.28;
   background:linear-gradient(92deg,var(--tx) 20%,var(--brand) 120%);
   -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 h1 .tag{display:inline-block;margin-left:8px;padding:1.5px 8px;border-radius:999px;
   font-size:10px;font-weight:650;letter-spacing:.6px;vertical-align:2px;
-  color:var(--brand);background:rgba(22,227,165,.1);border:1px solid rgba(22,227,165,.28);
+  color:var(--brand);background:rgba(var(--brand-rgb),.1);border:1px solid rgba(var(--brand-rgb),.28);
   -webkit-text-fill-color:currentColor}
 .sub{color:var(--tx2);font-size:12.5px;letter-spacing:.1px;
   display:inline-flex;align-items:center;gap:4px;white-space:nowrap;margin-left:2px}
@@ -344,7 +414,7 @@ svg.seg{height:21px;width:auto;display:block;flex:none}
 svg.seg polygon,svg.seg rect{fill:var(--seg-off)}
 svg.seg .on{fill:var(--brand)}
 /* 发光只在深色下开：浅色主题上一圈薄荷绿光晕会显脏 */
-:root:not([data-theme=light]) .clock svg.seg{filter:drop-shadow(0 0 5px rgba(22,227,165,.32))}
+:root:not([data-theme=light]):not([data-theme=apple]) .clock svg.seg{filter:drop-shadow(0 0 5px rgba(var(--brand-rgb),.32))}
 /* 「近 N 天」的 N 是能直接改的：数字框平时看着像普通文字，hover / 聚焦才显出输入框的样子 */
 .sub .days{display:inline-block;vertical-align:-2px;width:3.2em;margin:0 2px;padding:1px 4px;
   border:1px solid transparent;border-radius:6px;background:transparent;color:var(--tx);
@@ -354,7 +424,7 @@ svg.seg .on{fill:var(--brand)}
   -webkit-appearance:none;margin:0}
 .sub .days:hover{border-color:var(--line2);background:var(--bg3)}
 .sub .days:focus{border-color:var(--brand);background:var(--bg2);
-  box-shadow:0 0 0 3px rgba(22,227,165,.13)}
+  box-shadow:0 0 0 3px rgba(var(--brand-rgb),.13)}
 .sub .days:disabled{opacity:.75;cursor:not-allowed}
 .sub .days:disabled:hover{border-color:transparent;background:transparent}
 
@@ -378,7 +448,7 @@ input[type=search],select{padding:7px 12px;border:1px solid var(--line);border-r
 input[type=search]{width:300px}
 input[type=search]::placeholder{color:var(--tx3)}
 input[type=search]:focus,select:focus{border-color:var(--brand);
-  box-shadow:0 0 0 3px rgba(22,227,165,.13);background:var(--bg2)}
+  box-shadow:0 0 0 3px rgba(var(--brand-rgb),.13);background:var(--bg2)}
 select{cursor:pointer}
 label.chk{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--tx2);
   cursor:pointer;user-select:none;white-space:nowrap;padding:5px 10px;border-radius:8px;
@@ -394,20 +464,21 @@ label.chk:has(input:checked){color:var(--brand)}
 /* ---- 顶部动作按钮 ---- */
 .acts{display:flex;gap:8px;align-items:center;flex:none}
 .btn-act{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:10px;
-  border:1px solid var(--line);background:var(--bg3);color:var(--tx);font-size:12.5px;
+  border:1px solid var(--line);background:var(--bg3);color:var(--tx);
+  font-size:12.5px;font-weight:600;   /* 三个按钮同一套字号字重，主次只靠底色和阴影区分 */
   font-family:inherit;cursor:pointer;white-space:nowrap;transition:.16s;letter-spacing:.2px}
 .btn-act:hover{border-color:var(--line2);background:var(--bg4);transform:translateY(-1px)}
 .btn-act:active{transform:translateY(0)}
 .btn-act.primary{background:linear-gradient(135deg,var(--brand),var(--brand2));
-  border-color:transparent;color:var(--on-brand);font-weight:700;
-  box-shadow:0 6px 20px rgba(22,227,165,.28)}
-.btn-act.primary:hover{filter:brightness(1.08);box-shadow:0 8px 26px rgba(22,227,165,.4)}
+  border-color:transparent;color:var(--on-brand);
+  box-shadow:0 6px 20px rgba(var(--brand-rgb),.28)}
+.btn-act.primary:hover{filter:brightness(1.08);box-shadow:0 8px 26px rgba(var(--brand-rgb),.4)}
 .btn-act:disabled{opacity:.6;cursor:default;transform:none}
 .btn-act.ic{padding:7px 10px;font-size:15px;line-height:1;min-width:36px;justify-content:center}
 .btn-act.ic span{display:block;transition:transform .35s cubic-bezier(.2,.9,.3,1.4)}
 .btn-act.ic:hover span{transform:rotate(-18deg) scale(1.08)}
 /* 「数据源」排在最后，用一点品牌色把它从其它按钮里拎出来 —— 改设置是低频但重要的动作 */
-.btn-act.src{background:var(--brand-tint);border-color:var(--brand-edge);font-weight:650}
+.btn-act.src{background:var(--brand-tint);border-color:var(--brand-edge)}
 .btn-act.src svg{color:var(--brand)}
 .btn-act svg{width:14px;height:14px;flex:none;display:block}
 .btn-act .spin{width:12px;height:12px;border:2px solid rgba(0,0,0,.25);
@@ -444,13 +515,13 @@ label.chk:has(input:checked){color:var(--brand)}
 .demobar a:hover{text-decoration:underline}
 
 /* ---- 更新提示条 ---- */
-.updbar{background:linear-gradient(90deg,rgba(22,227,165,.16),rgba(10,168,255,.12));
-  border-bottom:1px solid rgba(22,227,165,.26);color:var(--tx);
+.updbar{background:linear-gradient(90deg,rgba(var(--brand-rgb),.16),rgba(var(--brand2-rgb),.12));
+  border-bottom:1px solid rgba(var(--brand-rgb),.26);color:var(--tx);
   font-size:12.5px;padding:9px 30px;display:none;gap:11px;align-items:center}
 .updbar.show{display:flex}
 .updbar b{font-weight:650;white-space:nowrap;color:var(--brand)}
 .updbar .ub-ic{display:inline-flex;width:18px;height:18px;border-radius:50%;flex:none;
-  background:rgba(22,227,165,.18);color:var(--brand);border:1px solid rgba(22,227,165,.35);
+  background:rgba(var(--brand-rgb),.18);color:var(--brand);border:1px solid rgba(var(--brand-rgb),.35);
   align-items:center;justify-content:center;font-size:11px}
 .updbar .ub-sub{color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .updbar .ub-btn{padding:4px 11px;border-radius:8px;border:1px solid var(--line2);
@@ -483,14 +554,14 @@ label.chk:has(input:checked){color:var(--brand)}
   font-family:ui-monospace,Consolas,monospace}
 .modal .mb .cm{flex:1;min-width:0;word-break:break-word}
 .updmeta{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;
-  background:rgba(22,227,165,.07);border:1px solid rgba(22,227,165,.22);border-radius:10px;
+  background:rgba(var(--brand-rgb),.07);border:1px solid rgba(var(--brand-rgb),.22);border-radius:10px;
   padding:9px 12px;margin-bottom:10px;font-size:12.5px;color:var(--brand)}
 .updmeta b{font-size:13px;font-weight:650;color:var(--brand);
   font-family:ui-monospace,Consolas,monospace}
 .updmeta span{color:var(--tx2);font-size:11.5px}
 .updmeta i{font-style:normal;color:var(--tx3)}
 .updmeta em{margin-left:auto;font-style:normal;font-size:11.5px;color:var(--brand);
-  background:rgba(22,227,165,.14);border-radius:20px;padding:1px 9px}
+  background:rgba(var(--brand-rgb),.14);border-radius:20px;padding:1px 9px}
 .modal .mf{padding:12px 18px;border-top:1px solid var(--line);display:flex;
   gap:10px;align-items:center}
 .modal .mf a{color:var(--ac);font-size:12.5px;text-decoration:none}
@@ -533,7 +604,7 @@ label.chk:has(input:checked){color:var(--brand)}
   padding:7px 10px;border:1px solid var(--line);border-radius:9px;background:var(--bg2);
   color:var(--tx);outline:none;text-overflow:ellipsis;transition:.15s}
 .fld select:focus,.fld input[type=text]:focus{border-color:var(--brand);
-  box-shadow:0 0 0 3px rgba(22,227,165,.12)}
+  box-shadow:0 0 0 3px rgba(var(--brand-rgb),.12)}
 .fld .mini{flex:none;font-size:11.5px;color:var(--tx3);white-space:nowrap}
 .fld .pick{padding:6px 11px;border-radius:9px;border:1px solid var(--line);background:var(--bg2);
   color:var(--tx2);font-family:inherit;font-size:12px;cursor:pointer;flex:none;transition:.15s}
@@ -546,9 +617,9 @@ label.chk:has(input:checked){color:var(--brand)}
 .sw i::after{content:'';position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:50%;
   background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.4);transition:transform .18s}
 .sw input:checked+i{background:linear-gradient(135deg,var(--brand),var(--brand2));
-  border-color:transparent;box-shadow:0 0 14px rgba(22,227,165,.35)}
+  border-color:transparent;box-shadow:0 0 14px rgba(var(--brand-rgb),.35)}
 .sw input:checked+i::after{transform:translateX(18px)}
-.sw input:focus-visible+i{box-shadow:0 0 0 3px rgba(22,227,165,.25)}
+.sw input:focus-visible+i{box-shadow:0 0 0 3px rgba(var(--brand-rgb),.25)}
 .srchint{background:rgba(255,176,32,.08);border:1px solid rgba(255,176,32,.26);color:var(--warn);
   border-radius:10px;padding:10px 13px;font-size:12.5px;line-height:1.68;margin-bottom:12px}
 .srchint b{display:block;margin-bottom:3px;color:var(--warn)}
@@ -615,7 +686,7 @@ main{padding:20px 30px 64px;max-width:1680px;margin:0 auto}
   gap:10px;align-items:baseline;list-style:none;font-weight:600;font-size:13px;transition:.15s}
 .grp>summary::-webkit-details-marker{display:none}
 .grp>summary:hover{background:var(--bg3)}
-.grp[open]>summary{background:linear-gradient(180deg,rgba(22,227,165,.05),transparent)}
+.grp[open]>summary{background:linear-gradient(180deg,rgba(var(--brand-rgb),.05),transparent)}
 .gname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gmeta{font-size:10.5px;color:var(--tx3);font-weight:400;white-space:nowrap;
   font-family:ui-monospace,Consolas,monospace}
@@ -674,7 +745,7 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
   white-space:nowrap;transition:.15s}
 .mutedbox>summary::-webkit-details-marker{display:none}
 .mutedbox>summary:hover{border-color:var(--line2);color:var(--tx)}
-.mutedbox[open]>summary{border-color:rgba(22,227,165,.4);color:var(--brand)}
+.mutedbox[open]>summary{border-color:rgba(var(--brand-rgb),.4);color:var(--brand)}
 .mutedpanel{position:absolute;right:0;left:auto;margin-top:6px;background:var(--bg2);
   border:1px solid var(--line2);
   border-radius:12px;box-shadow:var(--shadow);padding:8px;min-width:280px;
@@ -736,7 +807,7 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
     <div class="sub">查看最近 <input type="number" id="daysIn" class="days"
       min="1" max="365" step="1" value="%%DAYSN%%" title="%%DROPTIP%%"> 天</div>
     <div class="acts" id="acts">
-      <button class="btn-act ic" id="btnTheme" title="切换深色 / 浅色"><span id="thIc">☾</span></button>
+      <button class="btn-act ic" id="btnTheme" title="切换主题：深色 / 浅色 / 苹果风"><span id="thIc">☾</span></button>
       <button class="btn-act primary" id="btnRefresh">↻ 刷新数据</button>
       <button class="btn-act" id="btnDoctor">环境体检</button>
       <button class="btn-act src" id="btnSrc" title="读不读 QQ / 微信、读哪个号，都在这里改">
@@ -955,24 +1026,35 @@ onlyTodo.checked = !!PREF.onlyTodo;
 /* ---------- 主题：深色为默认，浅色存进同一份偏好 ----------
    <head> 里那段内联脚本已经把 data-theme 定好了（防首屏闪白），
    这里只负责按钮图标与状态同步。 */
+const THEMES = ['dark', 'light', 'apple'];
+const THEME_META = {
+  dark:  { ic: '☾', name: '深色' },
+  light: { ic: '☀', name: '浅色' },
+  apple: { ic: '⌘', name: '苹果风' }
+};
 function themeNow() {
-  return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  const t = document.documentElement.getAttribute('data-theme');
+  return THEMES.indexOf(t) >= 0 ? t : 'dark';
 }
 function paintTheme() {
-  const t = themeNow();
-  thIc.textContent = t === 'light' ? '☀' : '☾';
-  btnTheme.title = t === 'light' ? '当前浅色 —— 点一下换深色' : '当前深色 —— 点一下换浅色';
+  const t = themeNow(), nx = THEMES[(THEMES.indexOf(t) + 1) % THEMES.length];
+  thIc.textContent = THEME_META[t].ic;
+  btnTheme.title = '当前' + THEME_META[t].name + ' —— 点一下换' + THEME_META[nx].name;
   btnTheme.setAttribute('aria-label', btnTheme.title);
 }
 function setTheme(t) {
-  if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
-  else document.documentElement.removeAttribute('data-theme');
+  if (t === 'dark') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', THEMES.indexOf(t) >= 0 ? t : 'dark');
   paintTheme();
 }
 /* 偏好里存了主题、但 <head> 没读到（极端情况：storage 被清了一半）→ 补一次 */
-if (PREF.theme === 'light' || PREF.theme === 'dark') setTheme(PREF.theme);
+if (PREF.theme && THEMES.indexOf(PREF.theme) >= 0) setTheme(PREF.theme);
 paintTheme();
-btnTheme.onclick = () => { setTheme(themeNow() === 'light' ? 'dark' : 'light'); savePrefs(); };
+btnTheme.onclick = () => {
+  const i = THEMES.indexOf(themeNow());
+  setTheme(THEMES[(i + 1) % THEMES.length]);
+  savePrefs();
+};
 
 /* ---------- 「近 N 天」可改 ----------
    天数决定服务端筛哪一段数据（不是纯前端过滤 —— 超出范围的行服务端根本没发下来），
