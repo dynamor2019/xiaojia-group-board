@@ -319,8 +319,8 @@ TPL = """<!DOCTYPE html>
   --brand-rgb:0,113,227;
   --brand2-rgb:74,158,255;
   --seg-off:rgba(var(--brand-rgb),.13);
-  --brand-tint:rgba(var(--brand-rgb),.07);
-  --brand-edge:rgba(var(--brand-rgb),.24);
+  --brand-tint:rgba(var(--brand-rgb),.11);
+  --brand-edge:rgba(var(--brand-rgb),.30);
 }
 /* 底：一层几乎看不见的顶光，苹果页面从不铺满颜色 */
 :root[data-theme=apple] body::before{
@@ -343,8 +343,7 @@ TPL = """<!DOCTYPE html>
    的特异性(0,3,0) 高于 `.btn-act.primary`(0,2,0)，直接写会连主按钮的渐变底都吃掉，
    结果就是白底配白字：屏幕上只剩一个空胶囊。这一版就是这么踩的。 */
 :root[data-theme=apple] .btn-act:not(.primary):not(.src){
-  border-radius:980px;background:var(--bg2);border-color:var(--line2);
-  font-weight:500;letter-spacing:.1px}
+  border-radius:980px;background:var(--bg2);border-color:var(--line2)}
 :root[data-theme=apple] .btn-act:not(.primary):not(.src):hover{
   background:var(--bg4);border-color:var(--line2)}
 :root[data-theme=apple] .btn-act.primary{border-radius:980px;
@@ -469,7 +468,8 @@ label.chk:has(input:checked){color:var(--brand)}
 
 /* ---- 顶部动作按钮 ---- */
 .acts{display:flex;gap:8px;align-items:center;flex:none}
-.btn-act{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:10px;
+.btn-act{display:inline-flex;align-items:center;gap:6px;padding:0 13px;border-radius:10px;
+  min-height:34px;   /* 高度写在盒子上，不靠 padding + 行高凑：图标、字号一变就会差几像素 */
   border:1px solid var(--line);background:var(--bg3);color:var(--tx);
   font-size:12.5px;font-weight:600;   /* 三个按钮同一套字号字重，主次只靠底色和阴影区分 */
   font-family:inherit;cursor:pointer;white-space:nowrap;transition:.16s;letter-spacing:.2px}
@@ -480,7 +480,7 @@ label.chk:has(input:checked){color:var(--brand)}
   box-shadow:0 6px 20px rgba(var(--brand-rgb),.28)}
 .btn-act.primary:hover{filter:brightness(1.08);box-shadow:0 8px 26px rgba(var(--brand-rgb),.4)}
 .btn-act:disabled{opacity:.6;cursor:default;transform:none}
-.btn-act.ic{padding:7px 10px;font-size:15px;line-height:1;min-width:36px;justify-content:center}
+.btn-act.ic{padding:0 10px;font-size:15px;line-height:1;min-width:34px;justify-content:center}
 .btn-act.ic span{display:block;transition:transform .35s cubic-bezier(.2,.9,.3,1.4)}
 .btn-act.ic:hover span{transform:rotate(-18deg) scale(1.08)}
 /* 「数据源」排在最后，用一点品牌色把它从其它按钮里拎出来 —— 改设置是低频但重要的动作 */
