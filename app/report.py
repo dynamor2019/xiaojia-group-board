@@ -268,6 +268,8 @@ TPL = """<!DOCTYPE html>
   --on-brand:#04120d;          /* 渐变主按钮上的字：深色主题下用深字才够亮 */
   --hover:rgba(255,255,255,.07);
   --seg-off:rgba(22,227,165,.12);   /* 数码管没亮的笔画 */
+  --brand-tint:rgba(22,227,165,.10); /* 「数据源」按钮的淡底 */
+  --brand-edge:rgba(22,227,165,.36);
 }
 :root[data-theme=light]{
   --bg:#f3f6fb;--bg2:#ffffff;--bg3:#f7f9fd;--bg4:#eef3fb;
@@ -281,6 +283,8 @@ TPL = """<!DOCTYPE html>
   --on-brand:#ffffff;          /* 浅色主题的渐变更饱和，深字会糊，改用白字 */
   --hover:rgba(16,24,40,.05);
   --seg-off:rgba(15,157,110,.14);
+  --brand-tint:rgba(15,157,110,.09);
+  --brand-edge:rgba(15,157,110,.38);
 }
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--tx);min-height:100vh;
@@ -402,6 +406,10 @@ label.chk:has(input:checked){color:var(--brand)}
 .btn-act.ic{padding:7px 10px;font-size:15px;line-height:1;min-width:36px;justify-content:center}
 .btn-act.ic span{display:block;transition:transform .35s cubic-bezier(.2,.9,.3,1.4)}
 .btn-act.ic:hover span{transform:rotate(-18deg) scale(1.08)}
+/* 「数据源」排在最后，用一点品牌色把它从其它按钮里拎出来 —— 改设置是低频但重要的动作 */
+.btn-act.src{background:var(--brand-tint);border-color:var(--brand-edge);font-weight:650}
+.btn-act.src svg{color:var(--brand)}
+.btn-act svg{width:14px;height:14px;flex:none;display:block}
 .btn-act .spin{width:12px;height:12px;border:2px solid rgba(0,0,0,.25);
   border-top-color:currentColor;border-radius:50%;animation:sp .7s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -730,9 +738,15 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
     <div class="acts" id="acts">
       <button class="btn-act ic" id="btnTheme" title="切换深色 / 浅色"><span id="thIc">☾</span></button>
       <button class="btn-act primary" id="btnRefresh">↻ 刷新数据</button>
-      <button class="btn-act" id="btnSrc">数据源</button>
       <button class="btn-act" id="btnDoctor">环境体检</button>
-      <button class="btn-act" id="btnDemo">看示例</button>
+      <button class="btn-act src" id="btnSrc" title="读不读 QQ / 微信、读哪个号，都在这里改">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <ellipse cx="12" cy="5.5" rx="7.5" ry="2.8"/>
+          <path d="M4.5 5.5v6c0 1.55 3.36 2.8 7.5 2.8s7.5-1.25 7.5-2.8v-6"/>
+          <path d="M4.5 11.5v6c0 1.55 3.36 2.8 7.5 2.8s7.5-1.25 7.5-2.8v-6"/>
+        </svg>
+        数据源</button>
     </div>
   </div>
   <div class="stats">
@@ -1255,7 +1269,6 @@ render();
 // ================= 服务端动作：刷新 / 体检 / 安装依赖 =================
 const btnRefresh = document.getElementById('btnRefresh');
 const btnDoctor = document.getElementById('btnDoctor');
-const btnDemo = document.getElementById('btnDemo');
 const acts = document.getElementById('acts');
 const con = document.getElementById('console');
 const cBody = document.getElementById('cBody');
@@ -1394,11 +1407,15 @@ btnDoctor.onclick = () => {
     .catch(() => conShow('体检接口不可用（是不是直接双击打开了 html？）', false));
 };
 
-if (DEMO) {
-  btnDemo.textContent = '退出示例';
-  btnDemo.onclick = () => { location.href = '/'; };
-} else {
-  btnDemo.onclick = () => { location.href = '/?demo=1'; };
+/* 「看示例」不再占顶栏一个按钮：示例数据混在真实看板里最容易被当成真数据，
+   而且第一次装好已经会弹「数据源」面板、空列表也有指路，不需要它来救场。
+   想看还是能看：地址后面加 ?demo=1。示例模式里给一个明显的退出口。 */
+if (DEMO && acts) {
+  const b = document.createElement('button');
+  b.className = 'btn-act';
+  b.textContent = '退出示例';
+  b.onclick = () => { location.href = '/'; };
+  acts.appendChild(b);
 }
 
 if (!SERVED) {
