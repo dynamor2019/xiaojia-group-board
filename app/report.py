@@ -248,23 +248,38 @@ TPL = """<!DOCTYPE html>
 <title>%%BRAND%% · %%TODAY%%</title>
 <link rel="icon" href="%%FAVICON%%">
 <script>
-/* 首屏定主题：必须排在样式表之前，否则深色用户会先看到一帧白底再翻黑 */
+/* 首屏定主题 + 定字号：必须排在样式表之前，否则深色用户会先看到一帧白底再翻黑，
+   放大字号的人也会先看到一整页小字再整体跳一下。 */
 (function () {
-  var t = '';
-  try { t = (JSON.parse(localStorage.getItem('qad_prefs_v1') || '{}') || {}).theme || ''; } catch (e) {}
+  var t = '', fs = 0;
+  try {
+    var o = JSON.parse(localStorage.getItem('qad_prefs_v1') || '{}') || {};
+    t = o.theme || ''; fs = o.fs || 0;
+  } catch (e) {}
   if (t !== 'light' && t !== 'dark') {
     try {
       var m = document.cookie.match(/(?:^|;\\s*)qadp=([^;]*)/);
-      if (m) t = (JSON.parse(decodeURIComponent(m[1])) || {}).theme || '';
+      if (m) {
+        var c = JSON.parse(decodeURIComponent(m[1])) || {};
+        t = t || c.theme || '';
+        fs = fs || c.fs || 0;
+      }
     } catch (e) {}
   }
   if (t === 'light' || t === 'dark' || t === 'apple')
     document.documentElement.setAttribute('data-theme', t);
+  if (fs >= 0.95 && fs <= 1.45)
+    document.documentElement.style.setProperty('--fscale', String(fs));
 })();
 </script>
 <style>
 *{box-sizing:border-box}
 :root{
+  /* 字号倍率：整套排版的总开关。所有 font-size 都写成 calc(NNpx*var(--fscale))，
+     按钮高度、卡片最小宽度这些"跟着字长大"的尺寸也乘它，缩放时才不会文字撑破容器。
+     顶栏的 A− / A+ 直接改这个变量，档位落在偏好里，刷新还在。默认 1.1：
+     12.5px 的正文在 1080p 上确实偏小，别让用户还要先点一下才算「正常」。 */
+  --fscale:1.1;
   --bg:#060a12;--bg2:#0b1220;--bg3:#101a2c;--bg4:#16233a;
   --line:rgba(126,166,255,.14);--line2:rgba(126,166,255,.28);
   --tx:#e9eefb;--tx2:#94a4c0;--tx3:#5f6d87;
@@ -406,20 +421,20 @@ header::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1px
 .brand{display:flex;align-items:center;justify-content:center;gap:13px;flex-wrap:wrap}
 .brand img{width:44px;height:44px;border-radius:13px;object-fit:cover;flex:none;
   border:1px solid var(--line2);box-shadow:0 0 0 3px rgba(var(--brand-rgb),.08),0 8px 24px rgba(0,0,0,.35)}
-h1{margin:0;font-size:20px;font-weight:680;letter-spacing:.3px;line-height:1.28;
+h1{margin:0;font-size:calc(20px*var(--fscale));font-weight:680;letter-spacing:.3px;line-height:1.28;
   background:linear-gradient(92deg,var(--tx) 20%,var(--brand) 120%);
   -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 h1 .tag{display:inline-block;margin-left:8px;padding:1.5px 8px;border-radius:999px;
-  font-size:10px;font-weight:650;letter-spacing:.6px;vertical-align:2px;
+  font-size:calc(10px*var(--fscale));font-weight:650;letter-spacing:.6px;vertical-align:2px;
   color:var(--brand);background:rgba(var(--brand-rgb),.1);border:1px solid rgba(var(--brand-rgb),.28);
   -webkit-text-fill-color:currentColor}
-.sub{color:var(--tx2);font-size:12.5px;letter-spacing:.1px;
+.sub{color:var(--tx2);font-size:calc(12.5px*var(--fscale));letter-spacing:.1px;
   display:inline-flex;align-items:center;gap:4px;white-space:nowrap;margin-left:2px}
 
 /* ---- 更新时间：标题右边的七段数码管 ----
    没亮的笔画也画（压暗），才有电子表那种"底纹"的味道。 */
 .clock{display:inline-flex;align-items:center;gap:8px;flex:none;margin-left:4px}
-.clock .lbl{font-size:11.5px;color:var(--tx3);letter-spacing:.6px;white-space:nowrap}
+.clock .lbl{font-size:calc(11.5px*var(--fscale));color:var(--tx3);letter-spacing:.6px;white-space:nowrap}
 svg.seg{height:21px;width:auto;display:block;flex:none}
 svg.seg polygon,svg.seg rect{fill:var(--seg-off)}
 svg.seg .on{fill:var(--brand)}
@@ -439,45 +454,48 @@ svg.seg .on{fill:var(--brand)}
 .sub .days:disabled:hover{border-color:transparent;background:transparent}
 
 .stats{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;justify-content:center}
-.stat{position:relative;padding:8px 14px 8px 13px;border-radius:11px;min-width:96px;
+.stat{position:relative;padding:8px calc(14px*var(--fscale)) 8px calc(13px*var(--fscale));
+  border-radius:11px;min-width:calc(96px*var(--fscale));
   background:var(--bg3);border:1px solid var(--line);cursor:default;
   transition:border-color .18s,transform .18s,background .18s}
 .stat::before{content:'';position:absolute;left:0;top:8px;bottom:8px;width:2px;border-radius:2px;
   background:linear-gradient(180deg,var(--brand),var(--brand2));opacity:.75}
-.stat b{font-size:19px;display:block;line-height:1.15;font-weight:700;
+.stat b{font-size:calc(19px*var(--fscale));display:block;line-height:1.15;font-weight:700;
   font-family:ui-monospace,"SF Mono",Consolas,monospace;letter-spacing:-.3px}
-.stat span{color:var(--tx2);font-size:11px;letter-spacing:.2px}
+.stat span{color:var(--tx2);font-size:calc(11px*var(--fscale));letter-spacing:.2px}
 .stat.click{cursor:pointer}
 .stat.click:hover{border-color:var(--line2);background:var(--bg4);transform:translateY(-1px)}
 .stat[title]:hover{border-color:var(--line2)}
 
 .bar{display:flex;gap:9px;margin-top:12px;flex-wrap:wrap;align-items:center;justify-content:center}
 input[type=search],select{padding:7px 12px;border:1px solid var(--line);border-radius:9px;
-  font-size:13px;background:var(--bg3);color:var(--tx);outline:none;font-family:inherit;
+  font-size:calc(13px*var(--fscale));background:var(--bg3);color:var(--tx);outline:none;font-family:inherit;
   transition:border-color .15s,box-shadow .15s,background .15s}
-input[type=search]{width:300px}
+/* 宽度跟着字号走：不放大的话，140% 时占位提示会被裁掉半句 */
+input[type=search]{width:min(calc(300px*var(--fscale)),100%)}
 input[type=search]::placeholder{color:var(--tx3)}
 input[type=search]:focus,select:focus{border-color:var(--brand);
   box-shadow:0 0 0 3px rgba(var(--brand-rgb),.13);background:var(--bg2)}
 select{cursor:pointer}
-label.chk{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--tx2);
+label.chk{display:inline-flex;align-items:center;gap:7px;font-size:calc(12.5px*var(--fscale));color:var(--tx2);
   cursor:pointer;user-select:none;white-space:nowrap;padding:5px 10px;border-radius:8px;
   border:1px solid transparent;transition:.15s}
 label.chk:hover{color:var(--tx);background:var(--bg3)}
 label.chk input{accent-color:var(--brand);width:13px;height:13px;cursor:pointer}
 label.chk:has(input:checked){color:var(--brand)}
-.saver{font-size:11px;padding:2.5px 9px;border-radius:999px;border:1px solid var(--line);
+.saver{font-size:calc(11px*var(--fscale));padding:2.5px 9px;border-radius:999px;border:1px solid var(--line);
   color:var(--tx2);background:var(--bg3);white-space:nowrap}
 .saver.ok{color:var(--ok);background:rgba(47,227,164,.1);border-color:rgba(47,227,164,.3)}
 .saver.bad{color:var(--warn);background:rgba(255,176,32,.1);border-color:rgba(255,176,32,.32)}
 
 /* ---- 顶部动作按钮 ---- */
-.acts{display:flex;gap:8px;align-items:center;flex:none}
-.btn-act{display:inline-flex;align-items:center;gap:6px;padding:0 13px;border-radius:10px;
-  min-height:34px;   /* 高度写在盒子上，不靠 padding + 行高凑：图标、字号一变就会差几像素 */
+.acts{display:flex;gap:8px;align-items:center;flex:none;flex-wrap:wrap;justify-content:center}
+.btn-act{display:inline-flex;align-items:center;gap:calc(6px*var(--fscale));
+  padding:0 calc(13px*var(--fscale));border-radius:10px;
+  min-height:calc(34px*var(--fscale));   /* 高度写在盒子上，不靠 padding + 行高凑：图标、字号一变就会差几像素 */
   line-height:1;     /* 行盒也钉死：`↻` 这类符号的行高度和汉字不一样，不锁就高低不齐 */
   border:1px solid var(--line);background:var(--bg3);color:var(--tx);
-  font-size:12.5px;font-weight:600;   /* 三个按钮同一套字号字重，主次只靠底色和阴影区分 */
+  font-size:calc(12.5px*var(--fscale));font-weight:600;   /* 三个按钮同一套字号字重，主次只靠底色和阴影区分 */
   font-family:inherit;cursor:pointer;white-space:nowrap;transition:.16s;letter-spacing:.2px}
 .btn-act:hover{border-color:var(--line2);background:var(--bg4);transform:translateY(-1px)}
 .btn-act:active{transform:translateY(0)}
@@ -486,16 +504,36 @@ label.chk:has(input:checked){color:var(--brand)}
   box-shadow:0 6px 20px rgba(var(--brand-rgb),.28)}
 .btn-act.primary:hover{filter:brightness(1.08);box-shadow:0 8px 26px rgba(var(--brand-rgb),.4)}
 .btn-act:disabled{opacity:.6;cursor:default;transform:none}
-.btn-act.ic{padding:0 10px;font-size:15px;line-height:1;min-width:34px;justify-content:center}
+.btn-act.ic{padding:0 calc(10px*var(--fscale));font-size:calc(15px*var(--fscale));
+  line-height:1;min-width:calc(34px*var(--fscale));justify-content:center}
 .btn-act.ic span{display:block;transition:transform .35s cubic-bezier(.2,.9,.3,1.4)}
 .btn-act.ic:hover span{transform:rotate(-18deg) scale(1.08)}
 /* 「数据源」排在最后，用一点品牌色把它从其它按钮里拎出来 —— 改设置是低频但重要的动作 */
 .btn-act.src{background:var(--brand-tint);border-color:var(--brand-edge)}
 .btn-act.src svg{color:var(--brand)}
-.btn-act svg{width:14px;height:14px;flex:none;display:block}
+.btn-act svg{width:calc(14px*var(--fscale));height:calc(14px*var(--fscale));flex:none;display:block}
 .btn-act .spin{width:12px;height:12px;border:2px solid rgba(0,0,0,.25);
   border-top-color:currentColor;border-radius:50%;animation:sp .7s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
+
+/* ---- 字号调节：A− [110%] A+ -------------------------------------------
+   做成一个连体小条，和旁边按钮同一行、同一高度。中间的百分比可以点，点一下复位 100%。
+   为什么不用「点一下循环档位」：档位有五档，循环着点找不回来，用户会以为坏了。 */
+.fsbox{display:inline-flex;align-items:center;flex:none;overflow:hidden;
+  height:calc(34px*var(--fscale));border:1px solid var(--line);border-radius:10px;
+  background:var(--bg3)}
+.fsbox button{display:inline-flex;align-items:center;justify-content:center;
+  height:100%;padding:0 calc(9px*var(--fscale));border:0;background:none;
+  color:var(--tx);font-family:inherit;font-weight:600;line-height:1;
+  font-size:calc(12.5px*var(--fscale));cursor:pointer;transition:.15s}
+.fsbox button:hover{background:var(--bg4)}
+.fsbox button:disabled{opacity:.35;cursor:default;background:none}
+.fsbox .fspct{min-width:calc(44px*var(--fscale));color:var(--tx2);
+  font-variant-numeric:tabular-nums;letter-spacing:.2px}
+.fsbox .fspct:hover{color:var(--tx)}
+.fsbox .fsicon{font-size:calc(13px*var(--fscale));letter-spacing:-.5px}
+:root[data-theme=apple] .fsbox{border-radius:980px;border-color:var(--line2);background:var(--bg2)}
+:root[data-theme=apple] .fsbox button{border-radius:980px}
 
 /* ---- 底部控制台 ---- */
 .console{position:fixed;right:16px;bottom:16px;width:min(660px,calc(100vw - 32px));
@@ -506,12 +544,12 @@ label.chk:has(input:checked){color:var(--brand)}
 .console.show{display:flex}
 .console .ch{display:flex;align-items:center;gap:9px;padding:10px 14px;
   background:linear-gradient(180deg,rgba(255,255,255,.06),transparent);
-  font-size:12.5px;font-weight:600;color:#eaf2ff;border-bottom:1px solid var(--line)}
+  font-size:calc(12.5px*var(--fscale));font-weight:600;color:#eaf2ff;border-bottom:1px solid var(--line)}
 .console .ch .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none;
   box-shadow:0 0 8px var(--ok)}
 .console .ch .dot.run{background:var(--warn);box-shadow:0 0 8px var(--warn);animation:bl 1s infinite}
 @keyframes bl{50%{opacity:.3}}
-.console .ch .x{margin-left:auto;cursor:pointer;color:#7d8ba3;font-size:15px;line-height:1}
+.console .ch .x{margin-left:auto;cursor:pointer;color:#7d8ba3;font-size:calc(15px*var(--fscale));line-height:1}
 .console .ch .x:hover{color:#fff}
 .console .cbody{padding:11px 14px;overflow:auto;
   font:12px/1.62 ui-monospace,"SF Mono",Consolas,"Courier New",monospace;
@@ -521,7 +559,7 @@ label.chk:has(input:checked){color:var(--brand)}
 /* ---- 演示横幅 ---- */
 .demobar{background:linear-gradient(90deg,rgba(255,176,32,.16),rgba(255,176,32,.06));
   border-bottom:1px solid rgba(255,176,32,.28);color:var(--warn);
-  font-size:12.5px;padding:8px 30px;display:flex;gap:10px;align-items:center}
+  font-size:calc(12.5px*var(--fscale));padding:8px 30px;display:flex;gap:10px;align-items:center}
 .demobar b{font-weight:650}
 .demobar a{margin-left:auto;color:var(--warn);font-weight:600;text-decoration:none}
 .demobar a:hover{text-decoration:underline}
@@ -529,20 +567,20 @@ label.chk:has(input:checked){color:var(--brand)}
 /* ---- 更新提示条 ---- */
 .updbar{background:linear-gradient(90deg,rgba(var(--brand-rgb),.16),rgba(var(--brand2-rgb),.12));
   border-bottom:1px solid rgba(var(--brand-rgb),.26);color:var(--tx);
-  font-size:12.5px;padding:9px 30px;display:none;gap:11px;align-items:center}
+  font-size:calc(12.5px*var(--fscale));padding:9px 30px;display:none;gap:11px;align-items:center}
 .updbar.show{display:flex}
 .updbar b{font-weight:650;white-space:nowrap;color:var(--brand)}
 .updbar .ub-ic{display:inline-flex;width:18px;height:18px;border-radius:50%;flex:none;
   background:rgba(var(--brand-rgb),.18);color:var(--brand);border:1px solid rgba(var(--brand-rgb),.35);
-  align-items:center;justify-content:center;font-size:11px}
+  align-items:center;justify-content:center;font-size:calc(11px*var(--fscale))}
 .updbar .ub-sub{color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .updbar .ub-btn{padding:4px 11px;border-radius:8px;border:1px solid var(--line2);
-  background:transparent;color:var(--tx);font-size:12px;font-family:inherit;cursor:pointer;flex:none;
+  background:transparent;color:var(--tx);font-size:calc(12px*var(--fscale));font-family:inherit;cursor:pointer;flex:none;
   transition:.15s}
 .updbar .ub-btn:hover{background:var(--hover)}
 .updbar .ub-btn.primary{background:linear-gradient(135deg,var(--brand),var(--brand2));
   color:var(--on-brand);font-weight:700;border-color:transparent}
-.updbar .ub-x{margin-left:auto;cursor:pointer;opacity:.6;font-size:15px;line-height:1;flex:none}
+.updbar .ub-x{margin-left:auto;cursor:pointer;opacity:.6;font-size:calc(15px*var(--fscale));line-height:1;flex:none}
 .updbar .ub-x:hover{opacity:1}
 
 /* ---- 弹层 ---- */
@@ -555,42 +593,43 @@ label.chk:has(input:checked){color:var(--brand)}
   width:min(620px,100%);max-height:78vh;display:flex;flex-direction:column;overflow:hidden;
   box-shadow:var(--shadow);animation:pop .2s cubic-bezier(.2,.9,.3,1.2)}
 @keyframes pop{from{transform:translateY(8px) scale(.985);opacity:0}to{transform:none;opacity:1}}
-.modal .mh{display:flex;align-items:center;gap:8px;padding:14px 18px;font-size:14px;
+.modal .mh{display:flex;align-items:center;gap:8px;padding:14px 18px;font-size:calc(14px*var(--fscale));
   border-bottom:1px solid var(--line);font-weight:650}
-.modal .mh span{margin-left:auto;cursor:pointer;color:var(--tx3);font-size:16px;line-height:1}
+.modal .mh span{margin-left:auto;cursor:pointer;color:var(--tx3);font-size:calc(16px*var(--fscale));line-height:1}
 .modal .mh span:hover{color:var(--tx)}
-.modal .mb{padding:12px 18px;overflow:auto;font-size:13px;line-height:1.75}
+.modal .mb{padding:12px 18px;overflow:auto;font-size:calc(13px*var(--fscale));line-height:1.75}
 .modal .mb .row{padding:7px 0;border-bottom:1px dashed var(--line);display:flex;gap:10px}
 .modal .mb .row:last-child{border-bottom:0}
-.modal .mb .cd{color:var(--tx3);font-size:11.5px;flex:none;width:78px;padding-top:2px;
+.modal .mb .cd{color:var(--tx3);font-size:calc(11.5px*var(--fscale));flex:none;
+  width:calc(78px*var(--fscale));padding-top:2px;
   font-family:ui-monospace,Consolas,monospace}
 .modal .mb .cm{flex:1;min-width:0;word-break:break-word}
 /* 提交说明的正文要点：小一号、灰一档，别跟标题抢 */
 .modal .mb .pts{margin:5px 0 0;padding-left:15px;list-style:disc}
-.modal .mb .pts li{font-size:11.5px;line-height:1.7;color:var(--tx2);margin:1px 0}
+.modal .mb .pts li{font-size:calc(11.5px*var(--fscale));line-height:1.7;color:var(--tx2);margin:1px 0}
 .updmeta{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;
   background:rgba(var(--brand-rgb),.07);border:1px solid rgba(var(--brand-rgb),.22);border-radius:10px;
-  padding:9px 12px;margin-bottom:10px;font-size:12.5px;color:var(--brand)}
-.updmeta b{font-size:13px;font-weight:650;color:var(--brand);
+  padding:9px 12px;margin-bottom:10px;font-size:calc(12.5px*var(--fscale));color:var(--brand)}
+.updmeta b{font-size:calc(13px*var(--fscale));font-weight:650;color:var(--brand);
   font-family:ui-monospace,Consolas,monospace}
-.updmeta span{color:var(--tx2);font-size:11.5px}
+.updmeta span{color:var(--tx2);font-size:calc(11.5px*var(--fscale))}
 .updmeta i{font-style:normal;color:var(--tx3)}
-.updmeta em{margin-left:auto;font-style:normal;font-size:11.5px;color:var(--brand);
+.updmeta em{margin-left:auto;font-style:normal;font-size:calc(11.5px*var(--fscale));color:var(--brand);
   background:rgba(var(--brand-rgb),.14);border-radius:20px;padding:1px 9px}
 .modal .mf{padding:12px 18px;border-top:1px solid var(--line);display:flex;
   gap:10px;align-items:center}
-.modal .mf a{color:var(--ac);font-size:12.5px;text-decoration:none}
+.modal .mf a{color:var(--ac);font-size:calc(12.5px*var(--fscale));text-decoration:none}
 .modal .mf a:hover{text-decoration:underline}
-.modal .mf .ub-btn{margin-left:auto;padding:6px 14px;border-radius:9px;font-size:13px;
+.modal .mf .ub-btn{margin-left:auto;padding:6px 14px;border-radius:9px;font-size:calc(13px*var(--fscale));
   border:1px solid var(--line);background:var(--bg3);color:var(--tx);font-family:inherit;
   cursor:pointer;transition:.15s}
 .modal .mf .ub-btn:hover{border-color:var(--line2);background:var(--bg4)}
 .modal .mf .ub-btn.primary{background:linear-gradient(135deg,var(--brand),var(--brand2));
   border-color:transparent;color:var(--on-brand);font-weight:700}
-.ver{color:var(--tx3);font-size:11.5px;font-family:ui-monospace,Consolas,monospace}
+.ver{color:var(--tx3);font-size:calc(11.5px*var(--fscale));font-family:ui-monospace,Consolas,monospace}
 
 /* ---- 数据源面板 ---- */
-.offtag{font-size:10px;padding:1.5px 8px;border-radius:20px;
+.offtag{font-size:calc(10px*var(--fscale));padding:1.5px 8px;border-radius:20px;
   background:rgba(255,95,109,.12);color:var(--hot);border:1px solid rgba(255,95,109,.3);
   cursor:pointer;white-space:nowrap;transform:translateY(-1px);letter-spacing:.3px}
 .offtag:hover{background:rgba(255,95,109,.2)}
@@ -601,28 +640,28 @@ label.chk:has(input:checked){color:var(--brand)}
 /* 只淡化说明和表单，开关要保持清晰 —— 否则看不出"还能再打开" */
 .srcblk.off .desc,.srcblk.off .fld{opacity:.45}
 .srcblk .sh{display:flex;align-items:center;gap:10px;margin-bottom:2px}
-.srcblk .sh b{font-size:13.5px;font-weight:650}
-.srcblk .sh .st{font-size:11.5px;color:var(--tx3);margin-left:auto;margin-right:2px}
+.srcblk .sh b{font-size:calc(13.5px*var(--fscale));font-weight:650}
+.srcblk .sh .st{font-size:calc(11.5px*var(--fscale));color:var(--tx3);margin-left:auto;margin-right:2px}
 .srcblk.off .sh .st{color:var(--hot)}
-.srcblk .desc{font-size:11.5px;color:var(--tx2);line-height:1.65;margin:3px 0 10px}
+.srcblk .desc{font-size:calc(11.5px*var(--fscale));color:var(--tx2);line-height:1.65;margin:3px 0 10px}
 /* 打开 QQ 之前的风险说明：不跟着 .off 一起淡下去 —— 越是关着的时候越该看清 */
-.risk{margin:8px 0 10px;padding:10px 12px;border-radius:10px;font-size:11.5px;
+.risk{margin:8px 0 10px;padding:10px 12px;border-radius:10px;font-size:calc(11.5px*var(--fscale));
   line-height:1.72;color:var(--tx2);
   background:rgba(255,176,32,.07);border:1px solid rgba(255,176,32,.26)}
-.risk .rh{font-size:12px;font-weight:700;color:var(--warn)}
-.risk .rh2{font-size:12px;font-weight:700;color:var(--warn);margin:9px 0 2px}
+.risk .rh{font-size:calc(12px*var(--fscale));font-weight:700;color:var(--warn)}
+.risk .rh2{font-size:calc(12px*var(--fscale));font-weight:700;color:var(--warn);margin:9px 0 2px}
 .risk .rb b{color:var(--tx);font-weight:650}
-.risk .rb2{margin-top:7px;font-size:11px;color:var(--tx3);line-height:1.65}
+.risk .rb2{margin-top:7px;font-size:calc(11px*var(--fscale));color:var(--tx3);line-height:1.65}
 .fld{display:flex;gap:9px;align-items:center;margin:8px 0 0}
-.fld>label{flex:none;width:64px;font-size:12px;color:var(--tx2)}
-.fld select,.fld input[type=text]{flex:1;min-width:0;font-family:inherit;font-size:12.5px;
+.fld>label{flex:none;width:calc(64px*var(--fscale));font-size:calc(12px*var(--fscale));color:var(--tx2)}
+.fld select,.fld input[type=text]{flex:1;min-width:0;font-family:inherit;font-size:calc(12.5px*var(--fscale));
   padding:7px 10px;border:1px solid var(--line);border-radius:9px;background:var(--bg2);
   color:var(--tx);outline:none;text-overflow:ellipsis;transition:.15s}
 .fld select:focus,.fld input[type=text]:focus{border-color:var(--brand);
   box-shadow:0 0 0 3px rgba(var(--brand-rgb),.12)}
-.fld .mini{flex:none;font-size:11.5px;color:var(--tx3);white-space:nowrap}
+.fld .mini{flex:none;font-size:calc(11.5px*var(--fscale));color:var(--tx3);white-space:nowrap}
 .fld .pick{padding:6px 11px;border-radius:9px;border:1px solid var(--line);background:var(--bg2);
-  color:var(--tx2);font-family:inherit;font-size:12px;cursor:pointer;flex:none;transition:.15s}
+  color:var(--tx2);font-family:inherit;font-size:calc(12px*var(--fscale));cursor:pointer;flex:none;transition:.15s}
 .fld .pick:hover{border-color:var(--brand);color:var(--brand)}
 /* 开关 */
 .sw{position:relative;display:inline-flex;width:40px;height:22px;flex:none;cursor:pointer}
@@ -636,33 +675,36 @@ label.chk:has(input:checked){color:var(--brand)}
 .sw input:checked+i::after{transform:translateX(18px)}
 .sw input:focus-visible+i{box-shadow:0 0 0 3px rgba(var(--brand-rgb),.25)}
 .srchint{background:rgba(255,176,32,.08);border:1px solid rgba(255,176,32,.26);color:var(--warn);
-  border-radius:10px;padding:10px 13px;font-size:12.5px;line-height:1.68;margin-bottom:12px}
+  border-radius:10px;padding:10px 13px;font-size:calc(12.5px*var(--fscale));line-height:1.68;margin-bottom:12px}
 .srchint b{display:block;margin-bottom:3px;color:var(--warn)}
 .srchint .h{display:flex;gap:7px}
 .srchint .h::before{content:'›';flex:none;opacity:.7}
-.srcmsg{font-size:12px;border-radius:9px;padding:9px 12px;margin-top:4px;display:none}
+.srcmsg{font-size:calc(12px*var(--fscale));border-radius:9px;padding:9px 12px;margin-top:4px;display:none}
 .srcmsg.show{display:block}
 .srcmsg.ok{background:rgba(47,227,164,.09);color:var(--ok);border:1px solid rgba(47,227,164,.28)}
 .srcmsg.err{background:rgba(255,95,109,.09);color:var(--hot);border:1px solid rgba(255,95,109,.3)}
 
 /* ================= 两列 ================= */
 main{padding:20px 30px 64px;max-width:1680px;margin:0 auto}
-.cols{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start}
+/* 自适应：两列的最小宽度跟着字号走。字放大到 140% 时，两栏各要 ~560px，
+   窗口不够就自动落成一列 —— 不要靠媒体查询，那个和字号无关，放大后照样挤。 */
+.cols{display:grid;gap:24px;align-items:start;
+  grid-template-columns:repeat(auto-fit,minmax(min(calc(430px*var(--fscale)),100%),1fr))}
 .col{background:transparent;min-width:0}
 .col-h{display:flex;align-items:center;gap:9px;padding:0 2px 10px;
   border-bottom:1px solid var(--line);margin-bottom:14px;position:relative}
 .col-h::after{content:'';position:absolute;left:0;bottom:-1px;width:56px;height:2px;
   border-radius:2px;background:linear-gradient(90deg,var(--brand),transparent)}
-.col-h .ttl{font-size:15px;font-weight:700;letter-spacing:.3px}
-.col-h .n{font-size:11.5px;color:var(--tx3);margin-left:auto;white-space:nowrap;
+.col-h .ttl{font-size:calc(15px*var(--fscale));font-weight:700;letter-spacing:.3px}
+.col-h .n{font-size:calc(11.5px*var(--fscale));color:var(--tx3);margin-left:auto;white-space:nowrap;
   font-family:ui-monospace,Consolas,monospace}
 /* 徽章类名一律带 msrc 前缀。别图省事写成裸 `.src` —— 顶栏的「数据源」按钮就是
-   `<button class="btn-act src">`，一个 0,1,0 的 `.src{font-size:10px}` 会把它
+   `<button class="btn-act src">`，一个 0,1,0 的 `.src{font-size:calc(10px*var(--fscale))}` 会把它
    12.5px 的字号、13px 的内边距、10px 的圆角全部静默改掉（v1.4.7 修） */
-.msrc{font-size:10px;padding:2px 8px;border-radius:6px;font-weight:700;letter-spacing:.5px}
+.msrc{font-size:calc(10px*var(--fscale));padding:2px 8px;border-radius:6px;font-weight:700;letter-spacing:.5px}
 .msrc.bqq{background:rgba(76,154,255,.14);color:var(--qq);border:1px solid rgba(76,154,255,.3)}
 .msrc.bwx{background:rgba(34,211,154,.13);color:var(--wx);border:1px solid rgba(34,211,154,.3)}
-.col-none{color:var(--tx3);font-size:12.5px;padding:22px;text-align:center;
+.col-none{color:var(--tx3);font-size:calc(12.5px*var(--fscale));padding:22px;text-align:center;
   border:1px dashed var(--line);border-radius:12px;background:var(--bg2)}
 
 .cards{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:18px}
@@ -673,21 +715,21 @@ main{padding:20px 30px 64px;max-width:1680px;margin:0 auto}
 .card.hot{border-left-color:var(--hot)}
 .card.warn{border-left-color:var(--warn)}
 .card-h{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:7px}
-.badge{font-size:10px;padding:2px 8px;border-radius:6px;background:rgba(76,154,255,.13);
+.badge{font-size:calc(10px*var(--fscale));padding:2px 8px;border-radius:6px;background:rgba(76,154,255,.13);
   color:var(--ac);border:1px solid rgba(76,154,255,.24);letter-spacing:.3px}
-.dl{font-size:11.5px;font-weight:700;color:var(--hot);white-space:nowrap;
+.dl{font-size:calc(11.5px*var(--fscale));font-weight:700;color:var(--hot);white-space:nowrap;
   font-family:ui-monospace,Consolas,monospace}
 .card.warn .dl{color:var(--warn)}
-.card-t{font-size:12.5px;line-height:1.65;display:-webkit-box;-webkit-line-clamp:3;
+.card-t{font-size:calc(12.5px*var(--fscale));line-height:1.65;display:-webkit-box;-webkit-line-clamp:3;
   -webkit-box-orient:vertical;overflow:hidden;color:var(--tx)}
-.card-f{margin-top:9px;font-size:10.5px;color:var(--tx3);display:flex;
+.card-f{margin-top:9px;font-size:calc(10.5px*var(--fscale));color:var(--tx3);display:flex;
   justify-content:space-between;align-items:flex-end;gap:8px}
 .card-f .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .card.done{opacity:.45;border-left-color:var(--tx3);background:transparent}
 .card.done .card-t{text-decoration:line-through;text-decoration-color:var(--tx3);color:var(--tx2)}
 
 .btn-done,.btn-reset{flex:none;border:1px solid var(--line);background:var(--bg3);color:var(--tx2);
-  font:inherit;font-size:11px;line-height:1.4;padding:3px 9px;border-radius:7px;
+  font:inherit;font-size:calc(11px*var(--fscale));line-height:1.4;padding:3px 9px;border-radius:7px;
   cursor:pointer;white-space:nowrap;transition:.15s}
 .btn-done:hover{border-color:var(--ok);color:var(--ok);background:rgba(47,227,164,.1)}
 .btn-done.on{background:rgba(47,227,164,.16);border-color:rgba(47,227,164,.5);color:var(--ok)}
@@ -701,19 +743,19 @@ main{padding:20px 30px 64px;max-width:1680px;margin:0 auto}
 .grp:hover{border-color:var(--line2)}
 .grp[open]{box-shadow:var(--shadow);border-color:var(--line2)}
 .grp>summary{padding:11px 14px;cursor:pointer;display:flex;justify-content:space-between;
-  gap:10px;align-items:baseline;list-style:none;font-weight:600;font-size:13px;transition:.15s}
+  gap:10px;align-items:baseline;list-style:none;font-weight:600;font-size:calc(13px*var(--fscale));transition:.15s}
 .grp>summary::-webkit-details-marker{display:none}
 .grp>summary:hover{background:var(--bg3)}
 .grp[open]>summary{background:linear-gradient(180deg,rgba(var(--brand-rgb),.05),transparent)}
 .gname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.gmeta{font-size:10.5px;color:var(--tx3);font-weight:400;white-space:nowrap;
+.gmeta{font-size:calc(10.5px*var(--fscale));color:var(--tx3);font-weight:400;white-space:nowrap;
   font-family:ui-monospace,Consolas,monospace}
 /* 整个群都被「已完成」收起来之后的空壳：群还在，只是个提示 */
 .grp.ghost{background:transparent;border-style:dashed;opacity:.75}
 .grp.ghost>summary{font-weight:500;color:var(--tx3)}
 .grp.ghost>summary:hover{background:var(--bg3)}
 .ghost-body{padding:10px 14px;border-top:1px dashed var(--line);
-  font-size:12px;color:var(--tx2);line-height:1.72}
+  font-size:calc(12px*var(--fscale));color:var(--tx2);line-height:1.72}
 .ghost-body b{color:var(--ok);font-weight:600}
 
 /* ---- 消息行 ---- */
@@ -722,43 +764,43 @@ main{padding:20px 30px 64px;max-width:1680px;margin:0 auto}
 .msg:hover::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;
   background:var(--brand);opacity:.55}
 .msg-h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;
-  font-size:11px;color:var(--tx3);margin-bottom:4px}
-.msg-h b{color:var(--tx2);font-weight:600;font-size:11.5px}
+  font-size:calc(11px*var(--fscale));color:var(--tx3);margin-bottom:4px}
+.msg-h b{color:var(--tx2);font-weight:600;font-size:calc(11.5px*var(--fscale))}
 .msg-h .btn-done{margin-left:auto}
-.msg-x{font-size:12.5px;line-height:1.66;white-space:pre-wrap;word-break:break-word;color:var(--tx)}
+.msg-x{font-size:calc(12.5px*var(--fscale));line-height:1.66;white-space:pre-wrap;word-break:break-word;color:var(--tx)}
 /* 「先发正文、再单独 @所有人」的补全：正文是从上文捞回来的，得让人看得出来 */
 .msg-c{margin-top:4px;padding:6px 10px;border-left:2px solid var(--line2);border-radius:0 6px 6px 0;
-  background:var(--bg3);color:var(--tx2);font-size:12px;line-height:1.62;
+  background:var(--bg3);color:var(--tx2);font-size:calc(12px*var(--fscale));line-height:1.62;
   white-space:pre-wrap;word-break:break-word}
-.msg-c span{display:block;margin-top:2px;color:var(--tx3);font-size:10.5px}
-.msg-cf{margin-top:4px;color:var(--tx3);font-size:10.5px}
+.msg-c span{display:block;margin-top:2px;color:var(--tx3);font-size:calc(10.5px*var(--fscale))}
+.msg-cf{margin-top:4px;color:var(--tx3);font-size:calc(10.5px*var(--fscale))}
 .msg.done{opacity:.4}
 .msg.done .msg-x{text-decoration:line-through;text-decoration-color:var(--tx3)}
-.tag{font-size:10px;padding:1.5px 7px;border-radius:5px;background:var(--bg4);color:var(--tx2);
+.tag{font-size:calc(10px*var(--fscale));padding:1.5px 7px;border-radius:5px;background:var(--bg4);color:var(--tx2);
   border:1px solid var(--line);letter-spacing:.2px}
-.dtag{font-size:10px;padding:1.5px 7px;border-radius:5px;background:rgba(255,95,109,.12);
+.dtag{font-size:calc(10px*var(--fscale));padding:1.5px 7px;border-radius:5px;background:rgba(255,95,109,.12);
   color:var(--hot);font-weight:700;border:1px solid rgba(255,95,109,.28)}
 mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3px;
   box-shadow:0 0 0 1px rgba(255,214,10,.18)}
 .empty{color:var(--tx3);padding:26px;text-align:center;background:var(--bg2);
-  border:1px dashed var(--line);border-radius:12px;font-size:12.5px}
+  border:1px dashed var(--line);border-radius:12px;font-size:calc(12.5px*var(--fscale))}
 .warn{margin:14px 30px 0;padding:11px 14px;background:rgba(255,176,32,.08);
   border:1px solid rgba(255,176,32,.26);border-radius:10px;color:var(--warn);
-  font-size:12.5px;line-height:1.75}
+  font-size:calc(12.5px*var(--fscale));line-height:1.75}
 .warn b{color:var(--warn)}
 .warn code{background:var(--hover);padding:1px 6px;border-radius:5px;
-  font-family:ui-monospace,Consolas,monospace;font-size:11.5px}
+  font-family:ui-monospace,Consolas,monospace;font-size:calc(11.5px*var(--fscale))}
 
 /* ---- 取消关注 ---- */
 .btn-mute{flex:none;border:1px solid transparent;background:transparent;color:var(--tx3);
-  font:inherit;font-size:11px;line-height:1;padding:4px 7px;border-radius:6px;
+  font:inherit;font-size:calc(11px*var(--fscale));line-height:1;padding:4px 7px;border-radius:6px;
   cursor:pointer;transition:.15s;opacity:.5}
 .grp>summary:hover .btn-mute{opacity:1}
 .btn-mute:hover{color:var(--hot);border-color:rgba(255,95,109,.3);background:rgba(255,95,109,.1)}
 /* details 自己当定位祖先 —— 顶栏是 position:relative，不这样写的话
    下拉面板会跑到顶栏左上角去，而不是贴着按钮底下 */
 .mutedbox{margin-left:2px;position:relative}
-.mutedbox>summary{cursor:pointer;list-style:none;font-size:12px;color:var(--tx2);
+.mutedbox>summary{cursor:pointer;list-style:none;font-size:calc(12px*var(--fscale));color:var(--tx2);
   padding:5px 11px;border:1px solid var(--line);border-radius:999px;background:var(--bg3);
   white-space:nowrap;transition:.15s}
 .mutedbox>summary::-webkit-details-marker{display:none}
@@ -769,25 +811,25 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
   border-radius:12px;box-shadow:var(--shadow);padding:8px;min-width:280px;
   max-height:320px;overflow:auto;z-index:30;max-width:calc(100vw - 60px)}
 .mutedpanel .mrow{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;
-  font-size:12.5px}
+  font-size:calc(12.5px*var(--fscale))}
 .mutedpanel .mrow:hover{background:var(--bg3)}
 .mutedpanel .mrow span.mn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap}
-.mutedpanel .none{color:var(--tx3);font-size:12px;padding:9px 8px}
+.mutedpanel .none{color:var(--tx3);font-size:calc(12px*var(--fscale));padding:9px 8px}
 .btn-back{flex:none;border:1px solid var(--line);background:var(--bg3);color:var(--tx2);
-  font:inherit;font-size:11px;padding:3px 9px;border-radius:7px;cursor:pointer;transition:.15s}
+  font:inherit;font-size:calc(11px*var(--fscale));padding:3px 9px;border-radius:7px;cursor:pointer;transition:.15s}
 .btn-back:hover{border-color:var(--ok);color:var(--ok);background:rgba(47,227,164,.1)}
 /* 页脚：服务在后台跑，这里给个低调的停止入口 */
 .foot{max-width:1680px;margin:-8px auto 34px;padding:0 30px;display:none;
   align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;
-  color:var(--tx3);font-size:12px;line-height:1.75}
+  color:var(--tx3);font-size:calc(12px*var(--fscale));line-height:1.75}
 .foot .sp{opacity:.5}
 .foot a{color:var(--tx3);text-decoration:none;border-bottom:1px dashed currentColor;
   cursor:pointer;transition:color .15s}
 .foot a:hover{color:var(--hot);border-bottom-color:var(--hot)}
 .bye{max-width:560px;margin:120px auto;padding:0 24px;text-align:center;
-  color:var(--tx);font-size:19px;font-weight:640;line-height:2.2}
-.bye span{display:block;color:var(--tx2);font-size:13.5px;font-weight:400}
+  color:var(--tx);font-size:calc(19px*var(--fscale));font-weight:640;line-height:2.2}
+.bye span{display:block;color:var(--tx2);font-size:calc(13.5px*var(--fscale));font-weight:400}
 @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 @media(max-width:900px){
@@ -825,6 +867,12 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
     <div class="sub">查看最近 <input type="number" id="daysIn" class="days"
       min="1" max="365" step="1" value="%%DAYSN%%" title="%%DROPTIP%%"> 天</div>
     <div class="acts" id="acts">
+      <div class="fsbox" id="fsBox"
+           title="字号：字小了就点 A+，按钮、卡片、栏宽会跟着一起放大">
+        <button id="fsMinus" title="字号小一档" aria-label="字号小一档"><span class="fsicon">A−</span></button>
+        <button class="fspct" id="fsPct" title="点一下回到 100%">110%</button>
+        <button id="fsPlus" title="字号大一档" aria-label="字号大一档"><span class="fsicon">A+</span></button>
+      </div>
       <button class="btn-act ic" id="btnTheme" title="切换主题：深色 / 浅色 / 苹果风"><span id="thIc">☾</span></button>
       <button class="btn-act primary" id="btnRefresh">↻ 刷新数据</button>
       <button class="btn-act" id="btnDoctor">环境体检</button>
@@ -941,7 +989,7 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
       </div>
 
       <div class="srcmsg" id="srcMsg"></div>
-      <div id="srcTip" style="font-size:11.5px;color:var(--tx2);line-height:1.7;margin-top:4px">
+      <div id="srcTip" style="font-size:calc(11.5px*var(--fscale));color:var(--tx2);line-height:1.7;margin-top:4px">
         改完点「保存」，再点一次 <b>↻ 刷新数据</b> 才会按新设置去读。<br>
         这些设置写在本机 <code>config.json</code> 里，不上传。
       </div>
@@ -1029,7 +1077,7 @@ function readPrefs() {
 }
 function savePrefs() {
   const s = JSON.stringify({
-    hideDone: hideDone.checked, onlyTodo: onlyTodo.checked, theme: themeNow()
+    hideDone: hideDone.checked, onlyTodo: onlyTodo.checked, theme: themeNow(), fs: FS
   });
   try { localStorage.setItem(PKEY, s); } catch (e) {}
   try {
@@ -1040,6 +1088,37 @@ const PREF = readPrefs();
 /* 默认：隐藏已完成 = 勾上（标完就不想再看见它），只看带日期的 = 不勾 */
 hideDone.checked = PREF.hideDone === undefined ? true : !!PREF.hideDone;
 onlyTodo.checked = !!PREF.onlyTodo;
+
+/* ---------- 字号：档位固定，改了就生效，和主题存在同一份偏好里 ----------
+   只改 --fscale 一个变量：所有 font-size 都是 calc(NNpx*var(--fscale))，
+   按钮高度、卡片最小宽、两栏的最小宽度也都乘它 —— 所以放大的是"整套排版"，
+   不会出现字顶着卡片边、或者两栏挤成一团。 */
+const FS_STEPS = [0.95, 1, 1.1, 1.2, 1.3, 1.4];
+const FS_DEFAULT = 1.1;
+const fsBox = document.getElementById('fsBox');
+const fsMinus = document.getElementById('fsMinus');
+const fsPct = document.getElementById('fsPct');
+const fsPlus = document.getElementById('fsPlus');
+let FS = FS_STEPS.filter(v => Math.abs(v - (PREF.fs || 0)) < 0.001)[0] || FS_DEFAULT;
+function fsApply() {
+  document.documentElement.style.setProperty('--fscale', String(FS));
+  fsPct.textContent = Math.round(FS * 100) + '%';
+  fsMinus.disabled = FS <= FS_STEPS[0] + 1e-6;
+  fsPlus.disabled = FS >= FS_STEPS[FS_STEPS.length - 1] - 1e-6;
+  fsBox.title = '当前 ' + Math.round(FS * 100) + '% —— A− 调小、A+ 调大，点中间的百分比回到 100%';
+}
+function fsStep(d) {
+  const i = FS_STEPS.findIndex(v => Math.abs(v - FS) < 0.001);
+  const nx = FS_STEPS[Math.max(0, Math.min(FS_STEPS.length - 1, i + d))];
+  if (Math.abs(nx - FS) < 0.001) return;
+  FS = nx;
+  fsApply();
+  savePrefs();
+}
+fsApply();
+fsMinus.onclick = () => fsStep(-1);
+fsPlus.onclick = () => fsStep(1);
+fsPct.onclick = () => { if (Math.abs(FS - 1) > 0.001) { FS = 1; fsApply(); savePrefs(); } };
 
 /* ---------- 主题：深色为默认，浅色存进同一份偏好 ----------
    <head> 里那段内联脚本已经把 data-theme 定好了（防首屏闪白），
