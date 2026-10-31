@@ -656,9 +656,12 @@ main{padding:20px 30px 64px;max-width:1680px;margin:0 auto}
 .col-h .ttl{font-size:15px;font-weight:700;letter-spacing:.3px}
 .col-h .n{font-size:11.5px;color:var(--tx3);margin-left:auto;white-space:nowrap;
   font-family:ui-monospace,Consolas,monospace}
-.src{font-size:10px;padding:2px 8px;border-radius:6px;font-weight:700;letter-spacing:.5px}
-.bqq{background:rgba(76,154,255,.14);color:var(--qq);border:1px solid rgba(76,154,255,.3)}
-.bwx{background:rgba(34,211,154,.13);color:var(--wx);border:1px solid rgba(34,211,154,.3)}
+/* 徽章类名一律带 msrc 前缀。别图省事写成裸 `.src` —— 顶栏的「数据源」按钮就是
+   `<button class="btn-act src">`，一个 0,1,0 的 `.src{font-size:10px}` 会把它
+   12.5px 的字号、13px 的内边距、10px 的圆角全部静默改掉（v1.4.7 修） */
+.msrc{font-size:10px;padding:2px 8px;border-radius:6px;font-weight:700;letter-spacing:.5px}
+.msrc.bqq{background:rgba(76,154,255,.14);color:var(--qq);border:1px solid rgba(76,154,255,.3)}
+.msrc.bwx{background:rgba(34,211,154,.13);color:var(--wx);border:1px solid rgba(34,211,154,.3)}
 .col-none{color:var(--tx3);font-size:12.5px;padding:22px;text-align:center;
   border:1px dashed var(--line);border-radius:12px;background:var(--bg2)}
 
@@ -862,14 +865,14 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
 <main>
   <div class="cols">
     <section class="col" id="colQQ">
-      <div class="col-h"><span class="src bqq">QQ</span><span class="ttl">QQ 群</span>
+      <div class="col-h"><span class="msrc bqq">QQ</span><span class="ttl">QQ 群</span>
         <span class="offtag" id="offQQ" style="display:none">读取已关闭</span>
         <span class="n" id="nQQ"></span></div>
       <div class="cards" id="soonQQ"></div>
       <div id="listQQ"></div>
     </section>
     <section class="col" id="colWX">
-      <div class="col-h"><span class="src bwx">微信</span><span class="ttl">微信群</span>
+      <div class="col-h"><span class="msrc bwx">微信</span><span class="ttl">微信群</span>
         <span class="offtag" id="offWX" style="display:none">读取已关闭</span>
         <span class="n" id="nWX"></span></div>
       <div class="cards" id="soonWX"></div>
@@ -1169,7 +1172,7 @@ function renderMuted() {
   box.innerHTML = [...muted.entries()]
     .sort((a, b) => (a[1].name > b[1].name ? 1 : -1))
     .map(([k, m]) =>
-      '<div class="mrow"><span class="src ' + (m.src === '微信' ? 'bwx' : 'bqq') + '">' +
+      '<div class="mrow"><span class="msrc ' + (m.src === '微信' ? 'bwx' : 'bqq') + '">' +
         m.src + '</span><span class="mn" title="' + esc(m.name) + '">' + esc(m.name) +
         '</span><button class="btn-back" data-un="' + k + '">恢复</button></div>').join('');
 }
