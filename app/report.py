@@ -626,7 +626,11 @@ label.chk:has(input:checked){color:var(--brand)}
 .modal .mf .ub-btn:hover{border-color:var(--line2);background:var(--bg4)}
 .modal .mf .ub-btn.primary{background:linear-gradient(135deg,var(--brand),var(--brand2));
   border-color:transparent;color:var(--on-brand);font-weight:700}
-.ver{color:var(--tx3);font-size:calc(11.5px*var(--fscale));font-family:ui-monospace,Consolas,monospace}
+/* 版本号是个按钮：点开「更新内容」。没有提示条的时候，这是唯一能回看改动的地方 */
+.ver{color:var(--tx3);font-size:calc(11.5px*var(--fscale));font-family:ui-monospace,Consolas,monospace;
+  background:none;border:0;padding:0;font-weight:inherit;cursor:pointer;
+  text-decoration:underline dotted;text-underline-offset:3px;transition:.15s}
+.ver:hover{color:var(--brand);border-color:currentColor}
 
 /* ---- 数据源面板 ---- */
 .offtag{font-size:calc(10px*var(--fscale));padding:1.5px 8px;border-radius:20px;
@@ -714,8 +718,21 @@ main{padding:20px 30px 64px;max-width:1680px;margin:0 auto}
 .card:hover{transform:translateY(-2px);border-color:var(--line2);box-shadow:var(--shadow)}
 .card.hot{border-left-color:var(--hot)}
 .card.warn{border-left-color:var(--warn)}
-.card-h{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:7px}
-.badge{font-size:calc(10px*var(--fscale));padding:2px 8px;border-radius:6px;background:rgba(76,154,255,.13);
+.card-h{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+/* 「这张卡是哪个群的」必须第一眼看到。群名原来缩在卡片最底下那行 10.5px 灰字里，
+   和发送人挤在一条线上，等于没写。现在提到头部做成带通道色的标签：
+   QQ 蓝 .bqq / 微信绿 .bwx，前面一个小圆点，扫一眼就能分清来源。 */
+.cfr{display:inline-block;max-width:min(70%,calc(260px*var(--fscale)));
+  font-size:calc(11px*var(--fscale));font-weight:650;letter-spacing:.2px;
+  padding:2px 8px;border-radius:6px;vertical-align:middle;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cfr::before{content:'';display:inline-block;width:5px;height:5px;border-radius:50%;
+  background:currentColor;margin-right:5px;vertical-align:1.5px}
+.cfr.bqq{background:rgba(76,154,255,.14);color:var(--qq);border:1px solid rgba(76,154,255,.28)}
+.cfr.bwx{background:rgba(34,211,154,.13);color:var(--wx);border:1px solid rgba(34,211,154,.28)}
+.card-h .badge{margin-left:auto;max-width:36%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{display:inline-block;font-size:calc(10px*var(--fscale));padding:2px 8px;border-radius:6px;
+  background:rgba(76,154,255,.13);
   color:var(--ac);border:1px solid rgba(76,154,255,.24);letter-spacing:.3px}
 .dl{font-size:calc(11.5px*var(--fscale));font-weight:700;color:var(--hot);white-space:nowrap;
   font-family:ui-monospace,Consolas,monospace}
@@ -930,7 +947,8 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
 </main>
 
 <footer class="foot" id="foot">
-  <span>数据只在你本机 · 关掉这个页面不会停服务 · <span class="ver">v%%VERSION%%</span></span>
+  <span>数据只在你本机 · 关掉这个页面不会停服务 ·
+    <button class="ver" id="verBtn" title="看看最近改了什么">v%%VERSION%%</button></span>
   <span class="sp">|</span>
   <a id="btnQuit">停止看板服务</a>
 </footer>
@@ -1004,7 +1022,7 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
 
 <div class="modal" id="updModal">
   <div class="mbox">
-    <div class="mh"><b>更新内容</b><span id="updClose">✕</span></div>
+    <div class="mh"><b id="updTitle">更新内容</b><span id="updClose">✕</span></div>
     <div class="mb" id="updList"></div>
     <div class="mf">
       <a id="updGit" target="_blank" rel="noopener">在 GitHub 上看 →</a>
@@ -1284,11 +1302,18 @@ function btnHTML(i) {
 function cardHTML(r) {
   const dn = r.n, cls = dn <= 1 ? 'hot' : (dn <= 3 ? 'warn' : '');
   const when = dn === 0 ? '今天' : (dn === 1 ? '明天' : dn + ' 天后');
+  const g = r.g || '（群名缺失）';
+  const wx = (r.src || 'QQ') === '微信';
+  const from = (wx ? '微信群' : 'QQ 群');
   return '<div class="card ' + cls + '">' +
-    '<div class="card-h"><span class="badge">' + esc(r.k) + '</span>' +
+    '<div class="card-h">' +
+      '<span class="cfr ' + (wx ? 'bwx' : 'bqq') + '" title="来自' + from + '：' + esc(g) + '">' +
+        esc(g) + '</span>' +
+      '<span class="badge">' + esc(r.k || '通知') + '</span>' +
       '<span class="dl">' + r.d.slice(5) + ' · ' + when + '</span></div>' +
     '<div class="card-t">' + esc((r.x || r.c || '').slice(0, 260)) + '</div>' +
-    '<div class="card-f"><span class="who">' + esc(r.g) + ' ｜ ' + esc(r.s) + '</span>' +
+    '<div class="card-f"><span class="who" title="' + from + ' · ' + esc(g) +
+      ' · 发送人：' + esc(r.s || '未知') + '">' + esc(r.s || '未署名') + '</span>' +
       btnHTML(r.i) + '</div></div>';
 }
 
@@ -1849,33 +1874,46 @@ let UPD = null, updTimer = null;
 
 function updModalShow(on) { updModal.classList.toggle('show', !!on); }
 
+function updRow(x) {
+  /* 首行是标题，正文按行拆成要点 —— 提交说明里那些「- 」开头的行就是改动清单 */
+  const body = (x.body || []).filter(l => l && !/^rem |^#/.test(l)).slice(0, 6);
+  return '<div class="row"><div class="cd">' + esc(x.date || '') + '</div>' +
+    '<div class="cm">' + esc(x.msg || '') +
+    (body.length ? '<ul class="pts">' + body.map(l =>
+      '<li>' + esc(l.replace(/^[-*·]\\s*/, '')) + '</li>').join('') + '</ul>' : '') +
+    '</div></div>';
+}
+
 function updRender() {
-  if (!UPD || !UPD.notes) return;
-  const n = UPD.notes.length;
+  if (!UPD) return;
+  const has = !!UPD.has_update;
+  /* 有更新就看"差的那几条"，没有更新就看"最近几条" —— 弹层不能空着。
+     接口万一没给 recent（老格式），退回 notes，别让弹层变成空白。 */
+  const items = has ? (UPD.notes || [])
+    : ((UPD.recent && UPD.recent.length) ? UPD.recent : (UPD.notes || []));
+  const n = items.length;
   const meta = '<div class="updmeta">' +
-    '<b>v' + esc(UPD.version || '') + '</b>' +
-    '<span>你的版本</span>' +
-    '<i>→</i>' +
-    '<b>' + esc(UPD.latest || '') + '</b>' +
-    '<span>' + esc(UPD.latest_date || '远端最新') + '</span>' +
-    (n ? '<em>' + n + ' 条改动</em>' : '') +
+    (has
+      ? '<b>v' + esc(UPD.version || '') + '</b><span>你的版本</span><i>→</i>' +
+        '<b>' + esc(UPD.latest || '') + '</b>' +
+        '<span>' + esc(UPD.latest_date || '远端最新') + '</span>' +
+        (n ? '<em>' + n + ' 条改动</em>' : '')
+      : '<b>v' + esc(UPD.version || '') + '</b><span>已经是最新版</span>' +
+        (UPD.latest_date ? '<span>最新提交 ' + esc(UPD.latest_date) + '</span>' : '') +
+        (n ? '<em>最近 ' + n + ' 次改动</em>' : '')) +
     '</div>';
-  updList.innerHTML = meta + (UPD.notes.map(x => {
-    /* 首行是标题，正文按行拆成要点 —— 提交说明里那些「- 」开头的行就是改动清单 */
-    const body = (x.body || []).filter(l => l && !/^rem |^#/.test(l)).slice(0, 6);
-    return '<div class="row"><div class="cd">' + esc(x.date || '') + '</div>' +
-      '<div class="cm">' + esc(x.msg || '') +
-      (body.length ? '<ul class="pts">' + body.map(l =>
-        '<li>' + esc(l.replace(/^[-*·]\\s*/, '')) + '</li>').join('') + '</ul>' : '') +
-      '</div></div>';
-  }).join('')
+  updList.innerHTML = meta + (items.map(updRow).join('')
     || '<div class="row"><div class="cm">这次没写提交说明 —— 可以直接更，' +
        '想先看改了什么就点下面「在 GitHub 上看」。</div></div>');
   document.getElementById('updGit').href = UPD.url || '#';
+  const ttl = document.getElementById('updTitle');
+  if (ttl) ttl.textContent = has ? '更新内容' : '最近的改动';
+  const go = document.getElementById('updGo2');
+  if (go) go.style.display = has ? '' : 'none';
 }
 
 function updLoad(force) {
-  if (!SERVED || DEMO) return;
+  if (!SERVED || DEMO) { updRender(); return; }
   fetch('/api/update' + (force ? '?force=1' : ''))
     .then(r => r.json()).then(d => {
       UPD = d;
@@ -1886,10 +1924,11 @@ function updLoad(force) {
           (n ? '，' + n + ' 条改动' : '') +
           '（你这里是 ' + (d.version || '') + '）';
         updbar.classList.add('show');
-        updRender();
       } else {
         updbar.classList.remove('show');
       }
+      /* 提示条只管"有新版本"这件事；弹层随时点开都得有内容 */
+      updRender();
     }).catch(() => {});
 }
 
@@ -1948,16 +1987,31 @@ function restartBoard() {
 
 if (updbar) {
   document.getElementById('updWhat').onclick = () => { updModalShow(true); updRender(); };
-  document.getElementById('updClose').onclick = () => updModalShow(false);
-  updModal.onclick = e => { if (e.target === updModal) updModalShow(false); };
   document.getElementById('updGo').onclick = updApply;
-  document.getElementById('updGo2').onclick = updApply;
   document.getElementById('updSkip').onclick = () => {
     updbar.classList.remove('show');
     fetch('/api/update/ignore', { method: 'POST' }).catch(() => {});
   };
   setTimeout(() => updLoad(false), 1200);
 }
+
+/* 弹层本身不依赖提示条：底栏那个版本号是常驻入口，
+   更新完提示条一消失，也还能点开看看刚才改了什么。 */
+if (updModal) {
+  document.getElementById('updClose').onclick = () => updModalShow(false);
+  updModal.onclick = e => { if (e.target === updModal) updModalShow(false); };
+  document.getElementById('updGo2').onclick = updApply;
+}
+const verBtn = document.getElementById('verBtn');
+if (verBtn) verBtn.onclick = () => {
+  updModalShow(true);
+  if (UPD) { updRender(); return; }
+  updList.innerHTML = '<div class="row"><div class="cm">' +
+    ((SERVED && !DEMO) ? '正在读取提交记录…'
+      : '直接打开的文件 / 示例模式读不到提交记录，点下面去 GitHub 看。') +
+    '</div></div>';
+  updLoad(false);
+};
 </script>
 </body></html>"""
 

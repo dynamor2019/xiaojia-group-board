@@ -60,6 +60,9 @@ _EMPTY = {
     "remote_sha": "",
     "remote_date": "",
     "notes": [],
+    # 最近几条提交（不管本地落后不落后）。「更新内容」弹层不能只在有新版本时才给东西看 ——
+    # 用户点完更新，提示条一消失，就再也看不到刚才改了什么。见 _summary()。
+    "recent": [],
     "error": "",
     "ignored": "",
 }
@@ -237,6 +240,7 @@ def _summary(st: dict, cached: bool = False) -> dict:
     cur = local_rev()
     head = st.get("remote_sha") or ""
     notes = [n for n in (st.get("notes") or []) if isinstance(n, dict)]
+    recent = [n for n in (st.get("recent") or []) if isinstance(n, dict)]
     has = bool(enabled() and cur and head and head != cur and head != st.get("ignored"))
     return {
         "enabled": enabled(),
@@ -249,6 +253,8 @@ def _summary(st: dict, cached: bool = False) -> dict:
         "latest_date": st.get("remote_date") or "",
         "has_update": has,
         "notes": notes if has else [],
+        # 没有新版本时也给最近几次改动：弹层永远有东西看，而不是弹出来一句"没有内容"
+        "recent": recent,
         "checked_at": st.get("checked_at") or 0,
         "checked_txt": _fmt(datetime.fromtimestamp(
             st.get("checked_at") or 0, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
@@ -302,6 +308,8 @@ def check(force: bool = False) -> dict:
         "remote_sha": commits[0]["sha"],
         "remote_date": commits[0]["date"],
         "notes": notes,
+        # 无论落后不落后都留一份最近的，供「更新内容」弹层随时查看
+        "recent": list(commits[:6]),
         "error": "",
         "checked_at": time.time(),
     })
