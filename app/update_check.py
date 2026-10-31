@@ -191,6 +191,22 @@ def due() -> bool:
 
 
 _PT = re.compile(r"^(?:[-*·]|\d+[.)、]|[①②③④⑤⑥])\s*")
+# 段落标题：`一、`/`二、`、`## 标题`、`（一）`、`【小结】`。这些行必须自成一块，
+# 否则会被当成上一条要点的续行粘上去（"…把卡片头撑开二、更新内容随时能看…"）。
+_HD = re.compile(r"^(?:[一二三四五六七八九十]+[、.]|#{1,6}\s|[（(][一二三四五六七八九十\d]+[)）]|【)")
+_STOP = "。！？：:；;"          # 句子/段落收尾的标点
+# 「修法：」「注意：」这种短引导词开头的行，也是一段的开头，不能并到上一条里去
+_LB = re.compile(r"^[^，。；：:!?！？]{1,8}[：:]")
+
+
+def _is_para(t: str) -> bool:
+    """这一行是"另起一段"，不是被 git 硬换行切出来的半句。
+
+    判据：以小标题开头、以句末标点收尾、或者行内已经有句号（说明是一整句话
+    写在一行里，不像折断处 —— 我写提交说明时折断基本落在逗号或词中间）。
+    """
+    return (bool(_HD.match(t)) or bool(_LB.match(t))
+            or t[-1] in _STOP or "。" in t or "！" in t or "？" in t)
 
 
 def commit_points(lines: list, limit: int = 6) -> list[str]:
@@ -199,16 +215,19 @@ def commit_points(lines: list, limit: int = 6) -> list[str]:
     git 的正文是硬换行的（一行七八十字就断），直接按行拆会把一句话切成两截，
     读起来像电报。所以先合并续行（中文之间不加空格），再只挑列表项 ——
     「1.」「- 」开头的那些就是改动清单，前面那句引言行不必占位。
+    小标题和整段说明单独成块、最后被过滤掉，这样它们不会糊在上一行要点尾巴上。
     """
     merged: list[str] = []
     for raw in lines:
         t = str(raw).strip()
         if not t:
             continue
-        if _PT.match(t) or not merged:
-            merged.append(t)
-        else:
+        cont = (merged and not _PT.match(t) and not _is_para(t)
+                and merged[-1][-1] not in _STOP)
+        if cont:
             merged[-1] += t
+        else:
+            merged.append(t)
     pts = [m for m in merged if _PT.match(m)]
     if pts:
         out = [_PT.sub("", m).strip() for m in pts]
