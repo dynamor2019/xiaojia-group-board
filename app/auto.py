@@ -8,9 +8,14 @@
 
 行为矩阵：
   NapCat 在线              → 直接抓，不碰 QQ
-  QQ 在跑但 NapCat 不在线  → 跳过，不碰（可能是你正常的 QQ，也可能是失控实例）
+  QQ 在跑但 NapCat 不在线  → 默认先关掉它，再按"没在跑"处理；抓完把你自己的 QQ 开回来
+                             （qq.auto_close = false 时退回老行为：跳过、不碰）
   QQ 没在跑 + --start      → 用 -q 快速登录拉起 → 抓 → 退出
   QQ 没在跑 + 无 --start   → 跳过
+
+为什么要"先关掉"：NapCat 是在 QQ 启动时注入插件的，QQ 一旦以普通模式跑起来，
+插件就没有加载的时机。只要你还开着 QQ，QQ 这一路就永远抓不到新消息 ——
+而看板上不会报错，只是数据停在旧日期，用户根本看不出原因（2026-11-01 的反馈）。
 
 用法：
     python auto.py --start          # 拉起 QQ 抓一次，抓完退出（自动化默认）
@@ -40,6 +45,9 @@ QQ_EXE = settings.qq_exe()
 
 UIN = str(settings.get("qq", "uin") or "").strip()
 WS_HOST, WS_PORT = "127.0.0.1", int(settings.get("qq", "ws_port", 8765))
+# 抓取时如果发现你开着 QQ（不是 NapCat 模式），要不要先关掉它。默认 true：
+# 关掉 → 用 NapCat 模式拉起 → 抓 → 退出 → 再把你的 QQ 开回来。
+AUTO_CLOSE = bool(settings.get("qq", "auto_close", True))
 
 _logf = None
 
@@ -238,6 +246,56 @@ def launcher_alive(pid: int) -> bool:
         return False
 
 
+def close_user_qq() -> bool:
+    """把用户自己开着的 QQ 关掉（`qq.auto_close` 打开时才会走到这里）。
+
+    先礼后兵：`taskkill` 不带 /F 只是发 WM_CLOSE，QQ 会正常走退出流程、把登录态写回去；
+    12 秒还没退干净，再 /F 整棵树收掉。为什么不能上来就强杀 —— 强杀容易留下
+    「有进程 / 无窗口」的僵尸，下一次 NapCat 注入就要跟它抢登录，抓出来是空数据。
+    """
+    pids = qq_pids()
+    if not pids:
+        return True
+    log(f"  先关掉你开着的 QQ（{len(pids)} 个进程）…")
+    try:
+        subprocess.run(["taskkill", "/IM", "QQ.exe"], capture_output=True, timeout=20)
+    except Exception as e:                              # noqa: BLE001
+        log(f"  ! 发送关闭请求失败: {e}")
+    for _ in range(12):
+        time.sleep(1)
+        if not qq_pids():
+            log("  QQ 已正常退出")
+            return True
+    log("  QQ 没理会关闭请求，强制结束…")
+    try:
+        subprocess.run(["taskkill", "/F", "/T", "/IM", "QQ.exe"], capture_output=True, timeout=30)
+    except Exception as e:                              # noqa: BLE001
+        log(f"  ! 强制结束失败: {e}")
+    for _ in range(8):
+        time.sleep(1)
+        if not qq_pids():
+            log("  QQ 已强制退出")
+            return True
+    log("  ! QQ 关不掉（可能弹了确认框），本次跳过")
+    return False
+
+
+def reopen_user_qq() -> None:
+    """抓完把用户自己的 QQ 放回去 —— 是我们关的，就得我们开。
+
+    注意不能用 NapCat 那套环境变量：那是给抓取用的临时实例，
+    用户回来看到的是一个带插件的 QQ，登录态也乱了。
+    """
+    if not Path(QQ_EXE).exists():
+        log(f"  ! 找不到 QQ 路径，请手动打开：{QQ_EXE}")
+        return
+    try:
+        subprocess.Popen([str(QQ_EXE)], cwd=str(Path(QQ_EXE).parent))
+        log("  已把你的 QQ 重新打开（普通模式）")
+    except Exception as e:                              # noqa: BLE001
+        log(f"  ! 重新打开 QQ 失败: {e}")
+
+
 # ------------------------------------------------------------------ 子任务
 def run(cmd: list[str], timeout: int, title: str) -> bool:
     log(f"$ {title}")
@@ -282,30 +340,45 @@ def main() -> int:
 
     launched = False
     launcher_pid = None
+    closed_user = False          # 是不是我们关掉了用户自己的 QQ（抓完要还回去）
     if alive:
         log("[1/4] NapCat 在线，直接抓（不动你的 QQ）")
-    elif pids:
-        if not has_win:
-            log("[1/4] QQ 在跑但没有任何可见窗口 = 失控状态（僵尸），本次跳过、不碰它。")
-            log("      处理：手动关掉 QQ 再重开；或看板群里的说明。")
-        else:
-            log("[1/4] QQ 在跑但不是 NapCat 模式，跳过（不干扰你正在用的 QQ）")
-            log("      想让 QQ 也刷新：退出 QQ，再点一次刷新。")
-        return 0            # 主动跳过不算失败
-    elif a.start:
-        if not UIN:
-            log("[1/4] 还没配置 QQ 号，无法快速登录。")
-            log("      请在 config.json 里填写  qq.uin = \"你的QQ号\"  后重试。")
-            return 6
-        log("[1/4] QQ 没在跑，拉起")
-        launcher_pid = start_qq()
-        if not launcher_pid:
-            return 2
-        launched = True
-        time.sleep(8)
     else:
-        log("[1/4] QQ 没在跑，且未指定 --start，跳过")
-        return 0            # 没让启动就是跳过，同样不算失败
+        if pids:
+            if not has_win:
+                log("[1/4] QQ 在跑但没有任何可见窗口 = 失控状态（僵尸）")
+            else:
+                log("[1/4] 检测到你开着 QQ（不是 NapCat 模式）")
+            if AUTO_CLOSE:
+                log("      按设置先关掉它，再用 NapCat 模式抓 —— 抓完会把你自己的 QQ 重新打开")
+                if not close_user_qq():
+                    return 4
+                closed_user = True
+                pids = []
+            else:
+                log("      跳过 QQ 这一路（qq.auto_close = false，不想动你正在用的 QQ）")
+                log("      想让它自己处理：把 config.json 里的 qq.auto_close 改成 true。")
+                return 0        # 主动跳过不算失败
+        if not pids:
+            if not a.start:
+                log("[1/4] QQ 没在跑，且未指定 --start，跳过")
+                if closed_user:
+                    reopen_user_qq()
+                return 0        # 没让启动就是跳过，同样不算失败
+            if not UIN:
+                log("[1/4] 还没配置 QQ 号，无法快速登录。")
+                log("      请在 config.json 里填写  qq.uin = \"你的QQ号\"  后重试。")
+                if closed_user:
+                    reopen_user_qq()
+                return 6
+            log("[1/4] 用 NapCat 模式拉起 QQ")
+            launcher_pid = start_qq()
+            if not launcher_pid:
+                if closed_user:
+                    reopen_user_qq()
+                return 2
+            launched = True
+            time.sleep(8)
 
     ok = run([PY, "-E", "-X", "utf8", "crawl_ws.py",
               "--days", str(a.days), "--pages", str(a.pages)],
@@ -314,6 +387,8 @@ def main() -> int:
         log("抓取失败 —— 不重新生成看板，避免旧数据冒充新数据")
         if launched and not a.keep:
             exit_qq(launcher_pid)
+        if closed_user:
+            reopen_user_qq()
         return 3
 
     run([PY, "-E", "-X", "utf8", "digest.py"], timeout=120, title="生成待办提醒")
@@ -331,7 +406,11 @@ def main() -> int:
 
     if launched and not a.keep:
         exit_qq(launcher_pid)
-    elif not launched:
+        if closed_user:
+            reopen_user_qq()
+    elif launched:
+        log("QQ 保持运行（--keep）：NapCat 实例还在占着，先不把普通 QQ 开回来")
+    else:
         log("QQ 是你自己的实例，保持不动")
 
     log("===== 全部完成 =====")

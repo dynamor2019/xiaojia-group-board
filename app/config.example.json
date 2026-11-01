@@ -6,7 +6,8 @@
     "napcat_dir": "",
     "exe": "",
     "ws_port": 8765,
-    "pages": 15
+    "pages": 15,
+    "auto_close": true
   },
   "wechat": {
     "enabled": true,

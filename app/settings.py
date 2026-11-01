@@ -34,6 +34,10 @@ DEFAULTS: dict = {
         "exe": "",                   # QQ.exe 路径；留空自动找常见位置
         "ws_port": 8765,             # OneBot 反向 WS 端口（本机）
         "pages": 15,                 # 每个群最多翻几页
+        # 抓取前如果发现你开着普通 QQ（不是 NapCat 模式），先把它关掉再抓，
+        # 抓完再把你自己的 QQ 开回来。默认 true：不这么做的话，只要 QQ 开着，
+        # QQ 这一路就永远抓不到新消息，而用户看不出来是为什么。
+        "auto_close": True,
     },
     "wechat": {
         "enabled": True,
