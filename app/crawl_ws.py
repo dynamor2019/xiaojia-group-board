@@ -34,6 +34,14 @@ PORT = int(settings.get("qq", "ws_port", 8765))
 PATH = "/ws/onebot"
 
 AT_ALL = {"all", "everyone", "0", ""}
+# 「@全体成员」不一定以 at 段的形式出现：QQNT 有些版本把它拍平成文本，段里没有 at，
+# 文字是 "@全体成员" 而不是 "@所有人"。只认 "@所有人" 会把这类整条漏掉（2026-11-01 反馈的那条）。
+AT_TEXT = re.compile(r"@\s*(所有人|全体成员|全体|all)", re.I)
+# 增量抓取的下界别死磕「库内最新那一条」：只要有一条因任何原因没抓到，下界就永久推到它
+# 后面去了，以后再也不会回头补。留重叠，重复的由 merge 按(时间,人,正文)去掉，成本≈0。
+# 取 3 天而不是 1 天：库里最新那条可能比漏掉的那条晚很多（这次就是 11-01 10:26 对
+# 10-30 22:14，差 36 小时），只回退一天照样盖不住。活跃群多翻 1~2 页，代价可接受。
+REWIND = 72 * 3600
 STORE = Path("data_store.json")
 
 conn = None
@@ -64,6 +72,15 @@ def ts_of(item: dict) -> int:
         return int(dt.datetime.strptime(item["time"], "%Y-%m-%d %H:%M").timestamp())
     except Exception:
         return 0
+
+
+def floor_for(last_ts: int, cutoff_ts: int) -> int:
+    """增量抓取的下界。库内最新时间往前退 REWIND，再和窗口起点取大。
+
+    单独抽出来是因为这行是整个增量逻辑的命门：取成「库内最新那条」的话，
+    漏抓一次就永久漏，后面每次都在它之后开始翻。
+    """
+    return max(last_ts - REWIND, cutoff_ts) if last_ts else cutoff_ts
 
 
 def merge(old: list, new: list, cutoff_ts: int) -> list:
@@ -144,11 +161,11 @@ def plain_text(segments) -> str:
 def is_at_all(m: dict) -> bool:
     segs = m.get("message")
     if isinstance(segs, str):
-        return "@所有人" in segs
+        return bool(AT_TEXT.search(segs))
     for seg in segs or []:
         if seg.get("type") == "at" and str((seg.get("data") or {}).get("qq", "")) in AT_ALL:
             return True
-    return "@所有人" in plain_text(segs)
+    return bool(AT_TEXT.search(plain_text(segs)))
 
 
 def pick_hits(all_msgs: list[dict], floor_ts: int) -> list[dict]:
@@ -287,7 +304,7 @@ async def main_async(args):
         key = f"{name} ({gid})"
         old = store.get(key, [])
         last_ts = max((ts_of(x) for x in old), default=0)
-        floor = max(last_ts, cutoff_ts)
+        floor = floor_for(last_ts, cutoff_ts)
 
         print(f"[{i}/{len(groups)}] {name}" + (f"  ← 上次 {dt.datetime.fromtimestamp(last_ts):%m-%d %H:%M}"
                                               if last_ts else ""), flush=True)
@@ -300,9 +317,11 @@ async def main_async(args):
         merged = merge(old, hits, cutoff_ts)
         if merged:
             store[key] = merged
-        added_total += max(0, len(merged) - len(old))
-        if hits:
-            print(f"    -> 新增 {len(hits)} 条，累计 {len(merged)} 条", flush=True)
+        add = max(0, len(merged) - len(old))
+        added_total += add
+        # 回看窗口取回的消息里大部分是已有的，报「新增 hits 条」会虚高
+        if add:
+            print(f"    -> 新增 {add} 条，累计 {len(merged)} 条", flush=True)
 
     # 清掉窗口内的空群，避免库里越积越脏
     store = {k: v for k, v in store.items() if v}

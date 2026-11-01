@@ -207,31 +207,31 @@ def collect(today: date, days: int = 30, sources=None) -> list[dict]:
         seen[base] = n + 1
         r["i"] = base if n == 0 else f"{base}-{n}"
 
-    # 已标记「完成」的，重出看板时直接不进去（点一次完成、刷新一次就收起来）。
-    # 注意：id 必须在这之后才算得出来，所以只能先算 id 再筛。
+    # 已标记「完成」的，默认收起来 —— 但**仍然发给页面**。
+    # 以前的写法是把它们直接从 rows 里剔掉，于是前端那句「已完成 · 显示中」成了空话：
+    # 用户点开数字卡取消隐藏，一条都出不来（2026-11-01 报的）。要能"收起来再看回来"，
+    # 数据就得在页面里，只是默认被 hideDone 挡住。
+    # 统计口径不动：总数 / 群数 / 临近截止仍旧只算没完成的，默认视图看起来和以前一样。
     try:
         import board_state
         done_ids = set(board_state.load().get("done") or [])
     except Exception:
         done_ids = set()
-    dropped_done = 0
+    collect.done_ids = done_ids
+    dropped_done = sum(1 for r in rows if r["i"] in done_ids)
     ghost: dict[str, dict] = {}
     if done_ids:
-        kept = []
         for r in rows:
             if r["i"] in done_ids:
-                dropped_done += 1
                 k = f"{r['src']}|{r['gid']}|{r['g']}"
                 g = ghost.setdefault(k, {"src": r["src"], "g": r["g"],
                                          "gid": r["gid"], "n": 0})
                 g["n"] += 1
-            else:
-                kept.append(r)
-        rows = kept
 
     # 整个群都被收起来的，留个空壳。否则用户看到的是「群怎么少了」，
     # 而不是「这几条我标记过了」—— 同一个事实，两种读法，得选对的那个。
-    alive = {f"{r['src']}|{r['gid']}|{r['g']}" for r in rows}
+    # 判"这个群还有没有没被收起来的条目"要按可见行算，不能按 rows（rows 现在是全量）。
+    alive = {f"{r['src']}|{r['gid']}|{r['g']}" for r in rows if r["i"] not in done_ids}
     collect.shadow = [v for k, v in ghost.items() if k not in alive]
     collect.dropped = (dropped_old, dropped_expired, dropped_bare, dropped_done)
     return rows
@@ -1038,6 +1038,8 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
 </div>
 <script>
 const DATA = %%DATA%%;
+/* 页面上真实存在的 id。用来回答「标记了几条、其中几条已经过期看不到了」 */
+const DATA_IDS = new Set(DATA.map(r => r.i));
 const GROUPS = %%GROUPSJSON%%;
 const SHADOW = %%SHADOW%%;
 const SRCOFF = %%SRCOFF%%;
@@ -1321,8 +1323,9 @@ function groupHTML(g, rs, qs) {
   const last = rs.reduce((m, r) => r.t > m ? r.t : m, '');
   const src = rs[0].src || 'QQ', gid = rs[0].gid || '';
   // 「隐藏已完成」不再参与这里的判断 —— 它现在默认就是勾上的，
-  // 算进来的话每张卡都会默认展开，页面长得没法看
-  const open = (qs.length || onlyTodo.checked || gsel.value) ? ' open' : '';
+  // 算进来的话每张卡都会默认展开，页面长得没法看。
+  // 反过来说：用户主动取消勾选（要看已完成的），就顺手展开，别再让他一个个点开找。
+  const open = (qs.length || onlyTodo.checked || gsel.value || !hideDone.checked) ? ' open' : '';
   const body = rs.map(r => {
     const main = r.x || r.c || '';
     const extra = (r.x && r.c)
@@ -1394,6 +1397,9 @@ function renderCol(src, qs, gv, ot, hd) {
     .map(ghostHTML);
 
   const nGrp = order.length + ghosts.length;
+  /* 这一侧到底有没有数据、有没有被"已完成"全挡住的 —— 空列时说哪句话取决于这个 */
+  const sideAll = DATA.some(r => (r.src || 'QQ') === src);
+  const sideVis = DATA.some(r => (r.src || 'QQ') === src && (!hd || !done.has(r.i)));
   document.getElementById('soon' + sfx).innerHTML =
     soon.length ? soon.map(cardHTML).join('') : '';
   document.getElementById('list' + sfx).innerHTML = nGrp
@@ -1401,10 +1407,11 @@ function renderCol(src, qs, gv, ot, hd) {
     : '<div class="col-none">' + (
         SRCOFF[src === 'QQ' ? 'qq' : 'wechat']
           ? '这一路的读取是关着的 —— 点顶上的「数据源」可以打开，开之前先看一眼那段风险说明'
-        : DATA.length ? '没有匹配的记录'
-        : (done.size ? '这一侧都标记成「完成」了 —— 点右上角「重置已完成」再刷新，就回来了'
+        : (sideAll && !sideVis)
+          ? '这一侧都标记成「完成」了 —— 取消勾选「隐藏已完成」（或点上面的数字卡）就回来了'
+        : sideAll ? '没有匹配的记录'
         : (SERVED ? '还没有数据 —— 点右上角「刷新数据」抓一次'
-                  : '还没有数据 —— 双击「启动看板.cmd」后点「刷新数据」'))
+                  : '还没有数据 —— 双击「启动看板.cmd」后点「刷新数据」')
       ) + '</div>';
 
   const nEl = document.getElementById('n' + sfx);
@@ -1418,9 +1425,15 @@ function render() {
   const gv = gsel.value, ot = onlyTodo.checked, hd = hideDone.checked;
   renderCol('QQ', qs, gv, ot, hd);
   renderCol('微信', qs, gv, ot, hd);
-  /* 标记过的都算「已完成」，哪怕它已经被收起来（DATA 里已经没有它了） */
+  /* 标记过的都算「已完成」，哪怕它已经被收起来 */
   doneN.textContent = done.size;
   doneLbl.textContent = done.size ? (hd ? '已完成 · 已收起' : '已完成 · 显示中') : '已完成';
+  /* 「42 已完成」但点开只看见 37 条，会像丢数据 —— 差额是已经过期 / 超出近 N 天的，
+     本来就不在看板上。说清楚，省得再来问一次。 */
+  if (!done.size) return;
+  const stale = [...done].filter(i => !DATA_IDS.has(i)).length;
+  document.getElementById('stDone').title = '点一下：显示 / 收起已完成的条目' +
+    (stale ? '（其中 ' + stale + ' 条已过期或超出近 ' + CUR_DAYS + ' 天，看板上本来就不显示）' : '');
 }
 
 document.addEventListener('click', e => {
@@ -2020,6 +2033,10 @@ if (verBtn) verBtn.onclick = () => {
 def build(today: date, days: int = 30, sources=None,
           served: bool = False, demo: bool = False) -> str:
     rows = collect(today, days, sources)
+    # 已完成的条目也在 rows 里（页面要能"取消隐藏再看回来"），但顶部那些数字
+    # 仍旧按"看不见它们"来算 —— 不然标记一条完成，总数还不动，人会以为没生效。
+    done_ids = getattr(collect, "done_ids", set())
+    vis_rows = [r for r in rows if r["i"] not in done_ids] if done_ids else rows
     dropped = getattr(collect, "dropped", (0, 0, 0))
     n_old, n_exp = dropped[0], dropped[1]
     n_bare = dropped[2] if len(dropped) > 2 else 0
@@ -2037,7 +2054,7 @@ def build(today: date, days: int = 30, sources=None,
     # 想知道的人悬停一下就有，不想知道的人眼前就是干净的一行。
     dropped_txt = ("已隐藏：" + "，".join(hide_parts)) if hide_parts else "没有隐藏任何条目"
     groups: dict[str, dict] = {}
-    for r in rows:
+    for r in vis_rows:
         c = groups.setdefault(r["g"], {"gid": r["gid"], "n": 0, "last": ""})
         c["n"] += 1
         c["last"] = max(c["last"], r["t"])
@@ -2051,7 +2068,7 @@ def build(today: date, days: int = 30, sources=None,
         else:
             cur["n"] += s["n"]          # 同名群（QQ 和微信各有一个）就并起来数
 
-    soon = sum(1 for r in rows if r["n"] is not None and 0 <= r["n"] <= 14)
+    soon = sum(1 for r in vis_rows if r["n"] is not None and 0 <= r["n"] <= 14)
 
     # 数据源状态：哪一侧被关掉了（列头挂个「读取已关闭」标签）
     src_off = {"qq": False, "wechat": False}
@@ -2081,7 +2098,7 @@ def build(today: date, days: int = 30, sources=None,
         "%%CLOCK%%": sev_seg(_now),
         "%%DAYSN%%": str(days if days and days > 0 else 30),
         "%%DROPTIP%%": dropped_txt,
-        "%%TOTAL%%": str(len(rows)),
+        "%%TOTAL%%": str(len(vis_rows)),
         "%%GN%%": str(len(groups)),
         "%%SOON%%": str(soon),
         "%%GROUPSJSON%%": json.dumps(groups, ensure_ascii=False, separators=(",", ":")),
