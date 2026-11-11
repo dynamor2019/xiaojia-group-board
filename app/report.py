@@ -2118,14 +2118,27 @@ def build(today: date, days: int = 30, sources=None,
             stale_parts.append(
                 f'<span class="sb-src">{_lb} 的数据停在 <b>{_d:%m-%d}</b>'
                 f'（{_lag} 天前）</span>')
+    # QQ 那一路停着，最常见的两个原因是：① QQ 版本比 NapCat 支持的新；② 抓的时候
+    # 你开着 QQ。前者刷一百次也没用 —— 页面必须自己把话说出来，否则用户只会
+    # 一遍遍点「刷新数据」，然后把「这破看板又不更新」记在心里。
+    why_qq = ""
+    if any("QQ" in p for p in stale_parts):
+        try:
+            import qq_compat
+            _cp = qq_compat.check()
+            if _cp.get("ok") is False and _cp.get("newest"):
+                why_qq = (f"QQ 已经是 {_cp['qq']}，NapCat 还只认到 {_cp['newest']}"
+                          " —— 现在刷一百次也抓不到，等 NapCat 更新后会自动恢复")
+        except Exception:
+            pass
     stalebar = ""
     if stale_parts:
         stalebar = (
             '<div class="stalebar"><span class="sb-ic">!</span>'
             '<span class="sb-src">有一路没更新到：</span>'
             + "".join(stale_parts)
-            + '<span class="sb-why">点右上角「刷新数据」再抓一次，'
-              '抓不到时控制台会写明原因</span></div>')
+            + '<span class="sb-why">' + (html.escape(why_qq) if why_qq else
+              '点右上角「刷新数据」再抓一次，抓不到时控制台会写明原因') + '</span></div>')
 
     try:
         import board_state

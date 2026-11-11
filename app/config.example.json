@@ -8,7 +8,8 @@
     "ws_port": 8765,
     "pages": 15,
     "auto_close": true,
-    "ignore_compat": false
+    "ignore_compat": false,
+    "auto_update_napcat": true
   },
   "wechat": {
     "enabled": true,

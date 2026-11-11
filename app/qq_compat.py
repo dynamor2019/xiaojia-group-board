@@ -62,6 +62,15 @@ def qq_version() -> str:
     return sorted(subs)[-1] if subs else ""
 
 
+def table(text: str) -> set[str]:
+    """从 napcat.mjs 的源码文本里抽出偏移表认的版本（不带 -x64）。
+
+    单独拎出来是为了让「还没装上的新版本」也能查：自愈模块下载完 zip，
+    先读包里的 napcat.mjs 判断它到底认不认这个 QQ，再决定要不要覆盖安装。
+    """
+    return {m.group(1) for m in _ROW.finditer(text)}
+
+
 def napcat_known(napcat_dir: Path) -> tuple[set[str], str]:
     """NapCat 内置偏移表认可的 QQ 版本集合（不带 -x64 后缀）。
 
@@ -75,7 +84,7 @@ def napcat_known(napcat_dir: Path) -> tuple[set[str], str]:
         txt = f.read_text(encoding="utf-8", errors="ignore")
     except OSError as e:
         return set(), f"读不了 {f}：{e}"
-    known = {m.group(1) for m in _ROW.finditer(txt)}
+    known = table(txt)
     if not known:
         return set(), f"{f} 里没有偏移表（版本可能不对）"
     return known, ""

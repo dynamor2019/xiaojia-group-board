@@ -42,6 +42,10 @@ DEFAULTS: dict = {
         # 立刻停下 —— 硬拉起来只会白等 120 秒，然后报一个看不出原因的失败。
         # 只有在"表里没有但其实能跑"这种少见情况才需要改成 true 手动试。
         "ignore_compat": False,
+        # 版本对不上时，去 GitHub 看一眼 NapCat 有没有出新版，并且**先验证**它的
+        # 偏移表认不认本机这个 QQ —— 认才换，不认就不动现有环境。默认 true。
+        # 关掉的话，QQ 一升级你就得自己去 GitHub 下 zip 解压覆盖，那步基本没人走通。
+        "auto_update_napcat": True,
     },
     "wechat": {
         "enabled": True,

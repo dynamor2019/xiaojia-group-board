@@ -8,7 +8,8 @@
 
 行为矩阵：
   NapCat 在线              → 直接抓，不碰 QQ
-  QQ 版本 NapCat 不认识     → 立刻停下，不动你的 QQ（qq.ignore_compat 可强试）
+  QQ 版本 NapCat 不认识     → 先自动找新版 NapCat（认才换）；还认不了就停下，不动你的 QQ
+                             （qq.ignore_compat 可强试，qq.auto_update_napcat 可关掉自动升级）
   QQ 在跑但 NapCat 不在线  → 默认先关掉它，再按"没在跑"处理；抓完把你自己的 QQ 开回来
                              （qq.auto_close = false 时退回老行为：跳过、不碰）
   QQ 没在跑 + --start      → 用 -q 快速登录拉起 → 抓 → 退出
@@ -23,6 +24,10 @@ QQ 热更新换了个 build，偏移全错，注入就静默失败 —— QQ 正
 但 ws 一直没人连。脚本只能干等 120 秒，报一句「NapCat 仍未连接」，
 用户看了只会以为"要重装 QQ"（2026-11-11）。所以抓之前先比对，
 不匹配就两秒内说清楚，并且不去动你正在用的 QQ。
+
+为什么还要自己找新版 NapCat：偏移表只有上游能补，用户唯一的出路是
+「自己去 GitHub 下 zip 解压覆盖」—— 这条路基本没人走通。所以这里替他去问一句、
+**先验表再换**：认这个 build 才覆盖，不认就一个字节都不动。见 napcat_update.py。
 
 用法：
     python auto.py --start          # 拉起 QQ 抓一次，抓完退出（自动化默认）
@@ -44,6 +49,7 @@ from pathlib import Path
 
 import settings
 import qq_compat
+import napcat_update
 
 BASE = Path(__file__).resolve().parent
 NAPCAT = settings.napcat_dir()
@@ -60,6 +66,10 @@ AUTO_CLOSE = bool(settings.get("qq", "auto_close", True))
 # 硬拉起来只会白等 120 秒再报一个看不出原因的失败。真遇到"表里没有但其实能跑"的
 # 情况，把它改成 true 手动试。
 IGNORE_COMPAT = bool(settings.get("qq", "ignore_compat", False))
+# 版本对不上时，要不要去 GitHub 看一眼 NapCat 有没有出新版、并且先验证它认不认这个 QQ，
+# 认才换。默认 true：不这么做的话，用户唯一的出路是「自己去 GitHub 下 zip 解压覆盖」，
+# 而绝大多数人走不通那条路 —— 他们只会三周后说「这破看板又不动了」。
+AUTO_UPDATE_NAPCAT = bool(settings.get("qq", "auto_update_napcat", True))
 
 _logf = None
 
@@ -393,11 +403,20 @@ def main() -> int:
         # 预检放在「关掉用户 QQ」之前：注定抓不到就别去动人家正在用的东西。
         cp = qq_compat.check(NAPCAT)
         if cp["ok"] is False and not IGNORE_COMPAT:
-            log(f"[1/4] QQ {cp['qq']} 和 NapCat 对不上，这次注定抓不到 —— 不动你的 QQ")
+            log(f"[1/4] QQ {cp['qq']} 和 NapCat 的偏移表对不上")
             log(f"      {cp['reason']}")
+            # 对不上不等于没救：NapCat 平均比 QQ 晚几天跟上。与其让用户自己去
+            # GitHub 下 zip 解压覆盖，不如这边问一句、验证一句、真能解决才换。
+            if AUTO_UPDATE_NAPCAT:
+                log("      看一眼 NapCat 有没有出息新版 —— 只在它真认这个 QQ 时才换")
+                h = napcat_update.heal(cp["qq"], NAPCAT, say=log)
+                log(f"      {h['msg']}")
+                if h["ok"]:
+                    cp = qq_compat.check(NAPCAT)     # 换完了重新读表，别信"我以为"
+                    log(f"  QQ {cp['qq']} 现在对得上了，继续抓")
+        if cp["ok"] is False and not IGNORE_COMPAT:
             log("      硬拉起来只会白等两分钟，然后留下一个假失败。所以先停在这里。")
-            log("      怎么办：① 等 NapCat 出新版（它跟上 QQ 之后，这里会自动放行，")
-            log("               因为预检读的是它自己的偏移表，不是写死的版本号）")
+            log("      怎么办：① 等 NapCat 出新版（下次刷新会自动再试一遍，不用你操心）")
             log("              ② 或者把 QQ 退回旧版；③ 微信那一路不受影响，点刷新照样抓微信")
             log("      非要试一次：config.json 里 qq.ignore_compat 改成 true。")
             # 微信那一路是另跑的一段，可能刚抓到新东西。别因为 QQ 挂了就把它扔掉。
