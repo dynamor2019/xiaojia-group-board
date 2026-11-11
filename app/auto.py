@@ -8,6 +8,7 @@
 
 行为矩阵：
   NapCat 在线              → 直接抓，不碰 QQ
+  QQ 版本 NapCat 不认识     → 立刻停下，不动你的 QQ（qq.ignore_compat 可强试）
   QQ 在跑但 NapCat 不在线  → 默认先关掉它，再按"没在跑"处理；抓完把你自己的 QQ 开回来
                              （qq.auto_close = false 时退回老行为：跳过、不碰）
   QQ 没在跑 + --start      → 用 -q 快速登录拉起 → 抓 → 退出
@@ -16,6 +17,12 @@
 为什么要"先关掉"：NapCat 是在 QQ 启动时注入插件的，QQ 一旦以普通模式跑起来，
 插件就没有加载的时机。只要你还开着 QQ，QQ 这一路就永远抓不到新消息 ——
 而看板上不会报错，只是数据停在旧日期，用户根本看不出原因（2026-11-01 的反馈）。
+
+为什么还要看版本：NapCat 是往 QQ 进程里按**精确 build 号的偏移**打补丁的。
+QQ 热更新换了个 build，偏移全错，注入就静默失败 —— QQ 正常起来（普通模式），
+但 ws 一直没人连。脚本只能干等 120 秒，报一句「NapCat 仍未连接」，
+用户看了只会以为"要重装 QQ"（2026-11-11）。所以抓之前先比对，
+不匹配就两秒内说清楚，并且不去动你正在用的 QQ。
 
 用法：
     python auto.py --start          # 拉起 QQ 抓一次，抓完退出（自动化默认）
@@ -36,6 +43,7 @@ import time
 from pathlib import Path
 
 import settings
+import qq_compat
 
 BASE = Path(__file__).resolve().parent
 NAPCAT = settings.napcat_dir()
@@ -48,6 +56,10 @@ WS_HOST, WS_PORT = "127.0.0.1", int(settings.get("qq", "ws_port", 8765))
 # 抓取时如果发现你开着 QQ（不是 NapCat 模式），要不要先关掉它。默认 true：
 # 关掉 → 用 NapCat 模式拉起 → 抓 → 退出 → 再把你的 QQ 开回来。
 AUTO_CLOSE = bool(settings.get("qq", "auto_close", True))
+# 预检不通过时还要不要硬试。默认 false：QQ 的 build 号差一个，NapCat 的偏移就全错，
+# 硬拉起来只会白等 120 秒再报一个看不出原因的失败。真遇到"表里没有但其实能跑"的
+# 情况，把它改成 true 手动试。
+IGNORE_COMPAT = bool(settings.get("qq", "ignore_compat", False))
 
 _logf = None
 
@@ -297,6 +309,36 @@ def reopen_user_qq() -> None:
 
 
 # ------------------------------------------------------------------ 子任务
+def other_side_fresh(minutes: int = 30) -> bool:
+    """另一侧（微信）刚刚是不是抓到了新数据？
+
+    刷新是分两段跑的：微信 → QQ。QQ 这路失败时，微信那边可能已经抓到
+    今天的新消息了。一刀切「不重新生成看板」等于把它扔掉 —— 2026-11-11
+    就白了一次：微信明明抓到了 11-10 19:45 的新消息（9 个群 36 条），
+    因为 QQ 这路挂了，页面还停在 11-03。
+
+    判断依据是文件修改时间，不猜内容：刚写过的就是刚抓的。
+    """
+    try:
+        d = settings.data_dir()
+    except Exception:
+        return False
+    now = time.time()
+    for p in d.glob("微信群公告_*.json"):
+        try:
+            if now - p.stat().st_mtime < minutes * 60:
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def rebuild_board() -> None:
+    """只重新生成，不再抓。用于「这一路失败、但另一路刚抓到新鲜数据」的情况。"""
+    run([PY, "-E", "-X", "utf8", "digest.py"], timeout=120, title="生成待办提醒")
+    run([PY, "-E", "-X", "utf8", "report.py"], timeout=120, title="生成看板")
+
+
 def run(cmd: list[str], timeout: int, title: str) -> bool:
     log(f"$ {title}")
     t0 = time.time()
@@ -344,6 +386,30 @@ def main() -> int:
     if alive:
         log("[1/4] NapCat 在线，直接抓（不动你的 QQ）")
     else:
+        # ── 预检：QQ 的 build 号必须在 NapCat 的偏移表里，否则注定白等 ──
+        # 2026-11-11 的事故：QQ 早上自动热更到 9.9.37-54395，NapCat 的表只到
+        # 9.9.36-53644。注入静默失败（QQ 起来了但不是 NapCat 模式），脚本只能
+        # 干等 120 秒然后报「NapCat 仍未连接」—— 用户看到这句话只会以为要重装 QQ。
+        # 预检放在「关掉用户 QQ」之前：注定抓不到就别去动人家正在用的东西。
+        cp = qq_compat.check(NAPCAT)
+        if cp["ok"] is False and not IGNORE_COMPAT:
+            log(f"[1/4] QQ {cp['qq']} 和 NapCat 对不上，这次注定抓不到 —— 不动你的 QQ")
+            log(f"      {cp['reason']}")
+            log("      硬拉起来只会白等两分钟，然后留下一个假失败。所以先停在这里。")
+            log("      怎么办：① 等 NapCat 出新版（它跟上 QQ 之后，这里会自动放行，")
+            log("               因为预检读的是它自己的偏移表，不是写死的版本号）")
+            log("              ② 或者把 QQ 退回旧版；③ 微信那一路不受影响，点刷新照样抓微信")
+            log("      非要试一次：config.json 里 qq.ignore_compat 改成 true。")
+            # 微信那一路是另跑的一段，可能刚抓到新东西。别因为 QQ 挂了就把它扔掉。
+            if other_side_fresh():
+                log("      不过微信那一路刚抓到新数据 —— 先按微信出一次页面，")
+                log("      顶部会挂一条提示，写明 QQ 的数据停在几天前")
+                rebuild_board()
+            return 7
+        if cp["ok"] is None:
+            log(f"  ! 没法判断 NapCat 支不支持这个 QQ（{cp['reason']}），照常试一次")
+        elif cp["ok"]:
+            log(f"      QQ {cp['qq']} 在 NapCat 的支持列表里（共 {cp['known_n']} 个 build）")
         if pids:
             if not has_win:
                 log("[1/4] QQ 在跑但没有任何可见窗口 = 失控状态（僵尸）")
@@ -384,7 +450,16 @@ def main() -> int:
               "--days", str(a.days), "--pages", str(a.pages)],
              timeout=900, title=f"抓取近 {a.days} 天 @所有人")
     if not ok:
-        log("抓取失败 —— 不重新生成看板，避免旧数据冒充新数据")
+        # 原来这里一律"不重新生成"，理由是"别让旧数据冒充新数据"。原则没错，
+        # 但太粗暴：微信那一路要是刚抓到新东西，也会被一起扔掉。所以分两种：
+        # 另一侧有新鲜的 → 照样出页面，顶部提示条会写明哪一路停在几天前；
+        # 另一侧也没动 → 维持原样，不动看板。
+        if other_side_fresh():
+            log("QQ 这路没抓到，但微信刚抓到新数据 —— 照样生成看板，")
+            log("页面上会挂一条提示，写明哪一路的数据停在几天前")
+            rebuild_board()
+        else:
+            log("抓取失败 —— 不重新生成看板，避免旧数据冒充新数据")
         if launched and not a.keep:
             exit_qq(launcher_pid)
         if closed_user:

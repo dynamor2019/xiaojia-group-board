@@ -7,7 +7,8 @@
     "exe": "",
     "ws_port": 8765,
     "pages": 15,
-    "auto_close": true
+    "auto_close": true,
+    "ignore_compat": false
   },
   "wechat": {
     "enabled": true,

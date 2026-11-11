@@ -564,6 +564,19 @@ label.chk:has(input:checked){color:var(--brand)}
 .demobar a{margin-left:auto;color:var(--warn);font-weight:600;text-decoration:none}
 .demobar a:hover{text-decoration:underline}
 
+/* ---- 数据陈旧提示条 ----
+   为什么要这条：QQ 那一侧断过一次（QQ 热更新到 NapCat 不认识的 build），
+   页面照常显示、数字照常统计，只是少了一路的新消息 —— 用户根本看不出来。
+   「数据旧了但页面不说」是最坏的一种沉默，比报错还坏。 */
+.stalebar{background:linear-gradient(90deg,rgba(255,176,32,.13),rgba(255,176,32,.04));
+  border-bottom:1px solid rgba(255,176,32,.24);color:var(--tx);
+  font-size:calc(12.5px*var(--fscale));padding:8px 30px;display:flex;gap:10px;align-items:center;
+  flex-wrap:wrap}
+.stalebar .sb-ic{color:var(--warn);font-weight:700;flex:none}
+.stalebar .sb-src{color:var(--tx2)}
+.stalebar b{font-weight:650;color:var(--warn);white-space:nowrap}
+.stalebar .sb-why{margin-left:auto;color:var(--tx3);font-size:calc(11.5px*var(--fscale))}
+
 /* ---- 更新提示条 ---- */
 .updbar{background:linear-gradient(90deg,rgba(var(--brand-rgb),.16),rgba(var(--brand2-rgb),.12));
   border-bottom:1px solid rgba(var(--brand-rgb),.26);color:var(--tx);
@@ -865,6 +878,7 @@ mark{background:rgba(255,214,10,.28);color:inherit;padding:0 2px;border-radius:3
 
 </style></head><body>
 %%DEMOBAR%%
+%%STALEBAR%%
 <div class="updbar" id="updbar">
   <span class="ub-ic">↑</span>
   <b>有新版本</b>
@@ -1530,8 +1544,17 @@ function pollRefresh() {
     if (s.rc === 0) {
       conShow('刷新完成，正在重载看板…', false);
       setTimeout(() => location.reload(), 1100);
+    } else if (s.rebuilt) {
+      /* 有报错，但看板确实重写过了 —— 另一路抓到了新数据。
+         不 reload 的话，新抓到的内容就躺在磁盘上没人看见。 */
+      conShow('刷新结束，有报错（见上），不过另一路抓到了新数据，正在重载…', false);
+      setTimeout(() => location.reload(), 2500);
     } else {
-      conShow('刷新结束，有报错（见上）', false);
+      /* 把返回码翻译成人话。光说"有报错"，用户还是得回头看日志。 */
+      const why = {2: 'QQ 拉不起来', 3: '抓取出错，看板没动',
+                   4: 'QQ 关不掉', 6: '还没填 QQ 号',
+                   7: 'QQ 版本和 NapCat 对不上，这次只抓了微信'}[s.rc];
+      conShow('刷新结束，有报错（见上）' + (why ? ' · ' + why : ''), false);
     }
   }).catch(() => {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
@@ -2078,6 +2101,32 @@ def build(today: date, days: int = 30, sources=None,
     except Exception:
         pass
 
+    # 哪一路的数据不是今天的？文件名叫 群公告_2026-11-03.json，日期就在名字里，
+    # 不用额外记账。落后一天以上就摆一条提示 —— 页面照常显示、数字照常统计，
+    # 只是少了一路的新消息，不说的话没人看得出来（2026-11-11 就栽在这）。
+    stale_parts: list[str] = []
+    for _p, _lb in (sources or []):
+        _m = re.search(r"(\d{4})-(\d{2})-(\d{2})", Path(_p).name)
+        if not _m:
+            continue
+        try:
+            _d = date(int(_m.group(1)), int(_m.group(2)), int(_m.group(3)))
+        except ValueError:
+            continue
+        _lag = (today - _d).days
+        if _lag >= 1:
+            stale_parts.append(
+                f'<span class="sb-src">{_lb} 的数据停在 <b>{_d:%m-%d}</b>'
+                f'（{_lag} 天前）</span>')
+    stalebar = ""
+    if stale_parts:
+        stalebar = (
+            '<div class="stalebar"><span class="sb-ic">!</span>'
+            '<span class="sb-src">有一路没更新到：</span>'
+            + "".join(stale_parts)
+            + '<span class="sb-why">点右上角「刷新数据」再抓一次，'
+              '抓不到时控制台会写明原因</span></div>')
+
     try:
         import board_state
         st = board_state.load()
@@ -2114,6 +2163,7 @@ def build(today: date, days: int = 30, sources=None,
             '<div class="demobar"><b>示例模式</b>　现在显示的是 demo/ 里的假数据，'
             '不会动你的真实群。<a href="/">回到我的看板 →</a></div>'
         ) if demo else "",
+        "%%STALEBAR%%": stalebar,
     }
     out = TPL
     for k, v in subs.items():

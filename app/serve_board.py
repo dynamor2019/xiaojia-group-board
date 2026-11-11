@@ -47,6 +47,7 @@ APP_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_DIR))
 
 import board_state  # noqa: E402
+import qq_compat  # noqa: E402
 import settings  # noqa: E402
 import update_check  # noqa: E402
 
@@ -88,6 +89,10 @@ class RefreshJob:
         self.rc: int | None = None
         self.started = 0.0
         self.ended = 0.0
+        # 这次刷新到底有没有重写看板文件。rc≠0 也可能重写过 —— 比如 QQ 那路
+        # 因为版本对不上失败，但微信刚抓到新数据，auto.py 仍会生成页面。
+        # 只看 rc 决定要不要 reload，会把新抓到的内容晾在磁盘上不给人看。
+        self.rebuilt = False
         self._lock = threading.Lock()
 
     def add(self, text: str) -> None:
@@ -102,6 +107,7 @@ class RefreshJob:
             return {
                 "running": self.running,
                 "rc": self.rc,
+                "rebuilt": self.rebuilt,
                 "lines": list(self.lines),
                 "elapsed": round((self.ended or time.time()) - self.started, 1)
                 if self.started else 0,
@@ -158,6 +164,11 @@ class RefreshJob:
         finally:
             self.running = False
             self.ended = time.time()
+            # 看板文件是不是在这次刷新里被重写的？按 mtime 判，不猜。
+            try:
+                self.rebuilt = settings.board_file().stat().st_mtime >= self.started
+            except OSError:
+                self.rebuilt = False
 
 
 def _child_env() -> dict:
@@ -508,7 +519,9 @@ def doctor() -> dict:
         exe = settings.qq_exe()
         add("QQ.exe", Path(exe).exists(), exe)
 
-        # QQ 版本对不上是「加载失败」最常见的原因，但又不该拦着不让用，所以报 warn
+        # QQ 版本和 NapCat 的偏移表对不上 = 注入**必然**失败，不是"可能有点问题"，
+        # 所以这项报 fail 而不是 warn。两个方向都要查：太旧（NapCat 要求 ≥ 9.9.27）
+        # 和太新（QQ 热更新跑到了表前面，2026-11-11 就是这种）。
         qv, qb = _qq_version()
         if not qv:
             add("QQ 版本", True, "没读到（QQ 不是 NT 版，或装在非常规路径）")
@@ -517,8 +530,14 @@ def doctor() -> dict:
                 f"{qv} 太旧 —— NapCat 要求 QQNT ≥ 9.9.27（构建 40768 以上），"
                 f"请先升级 QQ", "warn")
         else:
-            add("QQ 版本", True,
-                f"{qv}　（QQ 刚自动升级过、又突然抓不到，先更新 NapCat 再试）")
+            cp = qq_compat.check(nd)
+            if cp["ok"] is False:
+                add("QQ 版本", False,
+                    cp["reason"] + "　→ 等 NapCat 更新，或把 QQ 退回它认识的版本", "fail")
+            elif cp["ok"] is True:
+                add("QQ 版本", True, f"{qv}　（NapCat 的偏移表里有这个 build）")
+            else:
+                add("QQ 版本", True, f"{qv}　（{cp['reason']}，照常试）")
     else:
         add("QQ 侧", True,
             "默认关闭 —— 想用就去「数据源」打开（开之前先看那段风险说明和出问题怎么办）")

@@ -38,6 +38,10 @@ DEFAULTS: dict = {
         # 抓完再把你自己的 QQ 开回来。默认 true：不这么做的话，只要 QQ 开着，
         # QQ 这一路就永远抓不到新消息，而用户看不出来是为什么。
         "auto_close": True,
+        # 抓之前先比对「QQ 的 build 号」和「NapCat 内置的偏移表」。不在表里就
+        # 立刻停下 —— 硬拉起来只会白等 120 秒，然后报一个看不出原因的失败。
+        # 只有在"表里没有但其实能跑"这种少见情况才需要改成 true 手动试。
+        "ignore_compat": False,
     },
     "wechat": {
         "enabled": True,
