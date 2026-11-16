@@ -53,6 +53,9 @@ import napcat_update
 
 BASE = Path(__file__).resolve().parent
 NAPCAT = settings.napcat_dir()
+# SnowCat 便携目录（可选）。配了就走它：挂 V8 编译器通道，不看 QQ 的二进制偏移，
+# 所以 QQ 升级之后不用等上游 —— 而 NapCat 已经在 2026-11-12 终止了。
+SNOWCAT = settings.snowcat_dir()
 LOGDIR = settings.data_dir() / "logs"
 PY = sys.executable
 QQ_EXE = settings.qq_exe()
@@ -199,6 +202,25 @@ def napcat_alive(timeout: float = 8.0) -> bool:
 
 def start_qq(uin: str = UIN):
     """拉起 QQ，返回启动器 PID（退出时按这棵树收，不会误伤别的 QQ）。"""
+    # SnowCat 模式：QQ.exe 就在便携目录里，winmm 代理侧加载自己完成注入，
+    # 不需要另起启动器。多一个进程反而会让"整棵树收"多收一层。
+    if SNOWCAT:
+        exe = SNOWCAT / "QQ.exe"
+        if not exe.exists():
+            log(f"  ! SnowCat 目录里没有 QQ.exe：{exe}")
+            return None
+        cmd = [str(exe), "--enable-logging"]
+        if uin:
+            cmd += ["-q", uin]
+        try:
+            proc = subprocess.Popen(cmd, cwd=str(SNOWCAT),
+                                    creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+        except Exception as e:
+            log(f"  ! 启动失败: {e}")
+            return None
+        log(f"  已拉起 QQ（SnowCat 通道，快速登录 {uin or '无'}），PID={proc.pid}")
+        return proc.pid
+
     launcher = NAPCAT / "NapCatWinBootMain.exe"
     inject = NAPCAT / "NapCatWinBootHook.dll"
     if not launcher.exists() or not inject.exists() or not Path(QQ_EXE).exists():
@@ -401,7 +423,14 @@ def main() -> int:
         # 9.9.36-53644。注入静默失败（QQ 起来了但不是 NapCat 模式），脚本只能
         # 干等 120 秒然后报「NapCat 仍未连接」—— 用户看到这句话只会以为要重装 QQ。
         # 预检放在「关掉用户 QQ」之前：注定抓不到就别去动人家正在用的东西。
-        cp = qq_compat.check(NAPCAT)
+        #
+        # 2026-11-16：走 SnowCat 时这条预检没有意义 —— 它挂的是 v8::ScriptCompiler，
+        # 不查 QQ 的偏移表，QQ 升级也不会失效（这也正是它比 NapCat 强的地方）。
+        if SNOWCAT:
+            log("      走 SnowCat 通道（V8 注入），不需要比对偏移表")
+            cp = {"ok": True, "qq": "", "newest": "", "known_n": 0, "reason": "snowcat"}
+        else:
+            cp = qq_compat.check(NAPCAT)
         if cp["ok"] is False and not IGNORE_COMPAT:
             log(f"[1/4] QQ {cp['qq']} 和 NapCat 的偏移表对不上")
             log(f"      {cp['reason']}")

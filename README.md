@@ -66,32 +66,41 @@ QQ 明明开着，NapCat 却连不上。从 v1.5.6 起，脚本会在动手之�
       QQ 自己热更新上去了，NapCat 还没跟上 —— 不是你装坏了。
 ```
 
-**怎么办**（按推荐顺序）：
+**先说结局：NapCat 不会再更新了。** 2026-11-12 那天，NapNeko/NapCatQQ 把代码和 release
+全撤了，仓库只剩一行 README——`## Ending 到这里告一段落`。所以「等几天就好」这句话是错的，
+等不到。
 
-1. **什么都不用做。** 脚本发现对不上时，会自己去仓库问一句「NapCat 有没有出新版」，
-   把新版的偏移表**先读出来验一遍**：认你这个 QQ 才换上（顺手备份旧文件），
-   不认就一个字节都不动。等上游跟上的那一天，你点一次「刷新数据」就好了。
-2. **微信那一路不受影响**，点「刷新数据」照样抓微信，页面上会挂一条提示写明
-   「QQ 的数据停在几天前」+ 卡在哪个版本 —— 刷新也没用的时候，页面自己会说清楚。
-3. 真急着用 QQ：把 QQ 退回旧版（比如 9.9.37-54276），并在 QQ 设置里关掉自动更新。
-4. 想硬试试（表里没有但其实能跑）：`config.json` 里 `qq.ignore_compat` 改成 `true`。
-   不想让它自动换 NapCat：`qq.auto_update_napcat` 改成 `false`。
+**现在的解法：换成 SnowCat（社区接力项目），走 V8 通道。**
+它不问 QQ 的二进制偏移，而是挂在 `v8::ScriptCompiler::Compile` 上——在解密后的 JS
+正要被编译的那一刻把引导脚本插进去。QQ 升级不会让这套机制失效，这正是它比 NapCat 强的地方。
 
-自动换 NapCat 的日志长这样（新版认了 → 换；没认 → 不动）：
+看板这边只需要一个配置项：
 
-```
-[1/4] QQ 9.9.37-54395 和 NapCat 的偏移表对不上
-      看一眼 NapCat 有没有出息新版 —— 只在它真认这个 QQ 时才换
-      最新版是 v4.18.42，下下来看看它认不认 9.9.37-54395…
-      最新的 NapCat v4.18.42 也只认到 9.9.37-54276，还没有 9.9.37-54395。
-      上游还没跟上，这次先不动现有环境。
+```json
+"qq": { "snowcat_dir": "C:/Users/Administrator/snowcat-portable" }
 ```
 
-> 换下来的旧文件在 `data/backup/napcat-<版本>-<时间>/`，真出问题拷回去就能退回。
-> `napcat/config/`（OneBot 端口和 token）、`cache/`、`logs/`、`*.db*` 一律不碰。
+填了就走 SnowCat，旧的 `napcat/` 目录一个字节都不用动（想退回，把这一行删掉即可）。
+这条通道的日志出现在三个地方，排查按顺序看：
 
-> 顺带说一个容易误判的：QQ 有时会弹「文件已损坏，请重新安装」。不用重装 ——
-> 装回来的还是同一个新版本，一样不支持。那是 QQ 发现自己的启动配置被改过。
+| 看什么 | 在哪 | 说明 |
+|---|---|---|
+| 侧加载有没有生效 | `<便携目录>\v8l\_index.txt` | `READY hooks=4` + `PATCHED` 才算真的插进去了 |
+| 引导脚本有没有跑 | `<便携目录>\nc-boot.log` | 报 `ERR_MODULE_NOT_FOUND` 就是缺 node 依赖 |
+| OneBot 连没连上 | 看板刷新时的 `[ws] ... 已连接` | 端口/路径对不上会一直重连 |
+
+> 便携目录怎么来的：`robocopy` 一份已装的 QQ 目录（约 1.2G），再把 SnowCat 的
+> `release-tools/build/napcat.mjs`、`winmm-v8.dll`（改名成 `winmm.dll`）、
+> `snowcat-boot.js` 和 `packages/snowcat-shell-loader/NapCatWinBootHook.dll` 放进去，
+> 最后 `npm i express ws reflect-metadata`——`napcat.mjs` 里的依赖不在包里，
+> 少了它引导脚本会在 import 阶段就失败。
+
+**微信那一路始终不受影响**，抓不到 QQ 时照样能用；页面上会挂一条提示，
+写明哪一路的数据停在几天前、卡在哪个版本。
+
+> 顺带两个容易误判的：QQ 有时会弹「文件已损坏，请重新安装」，不用重装——那是 QQ
+> 发现自己的启动配置被改过；`resources\app` 下的 `dbghelp.dll` / `dbgeng.dll` 有时是坏的，
+> 会让 `wrapper.node` 加载失败，改名成 `.disabled` 即可（SnowCat 的脚本会自动做这件事）。
 
 ### 扫码：只需要一次
 
@@ -423,6 +432,7 @@ NapCat 就加载失败了。这不是你配错了，是它追不上新版本。
 | `qq.enabled`         | **`false`**                       | 默认关；打开前先看那句风险说明（面板里写着）                |
 | `qq.uin`             | `""`                              | QQ 号。不填就只能手动开 QQ 再抓                          |
 | `qq.napcat_dir`      | `""`                              | NapCat 目录，留空用项目下的 `napcat\`                  |
+| `qq.snowcat_dir`     | `""`                              | **SnowCat 便携目录；填了就走 V8 通道**（NapCat 已终止，新机器直接用这个） |
 | `qq.exe`             | `""`                              | `QQ.exe` 路径，留空自动找常见安装位置                      |
 | `qq.ws_port`         | `8765`                            | OneBot 反向 WS 端口                              |
 | `qq.pages`           | `15`                              | 每个群最多翻几页（每页 100 条）                           |

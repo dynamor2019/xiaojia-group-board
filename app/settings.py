@@ -31,6 +31,10 @@ DEFAULTS: dict = {
         "enabled": False,
         "uin": "",                   # 你的 QQ 号，快速登录用
         "napcat_dir": "",            # NapCat 解压目录；留空则用根目录下的 napcat/
+        # SnowCat 便携目录（含 QQ.exe + versions/）。填了就走 SnowCat 通道：
+        # 它是挂 V8 编译器、不认 QQ 的二进制偏移，所以 QQ 升级不用等上游。
+        # NapCat 已于 2026-11-12 终止，新机器建议直接填这里。
+        "snowcat_dir": "",
         "exe": "",                   # QQ.exe 路径；留空自动找常见位置
         "ws_port": 8765,             # OneBot 反向 WS 端口（本机）
         "pages": 15,                 # 每个群最多翻几页
@@ -183,6 +187,18 @@ def napcat_dir() -> Path:
     if p:
         return Path(p).expanduser()
     return ROOT / "napcat"
+
+
+def snowcat_dir() -> Path | None:
+    """SnowCat 便携目录；没配或者目录不像样就返回 None，让调用方走老路。
+
+    判据是目录里真有 QQ.exe —— 只配了一个空路径不算，免得半路崩在启动上。
+    """
+    p = (get("qq", "snowcat_dir") or "").strip()
+    if not p:
+        return None
+    d = Path(p).expanduser()
+    return d if (d / "QQ.exe").exists() else None
 
 
 def qq_exe() -> str:
