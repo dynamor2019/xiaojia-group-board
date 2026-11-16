@@ -416,8 +416,11 @@ def main() -> int:
                     log(f"  QQ {cp['qq']} 现在对得上了，继续抓")
         if cp["ok"] is False and not IGNORE_COMPAT:
             log("      硬拉起来只会白等两分钟，然后留下一个假失败。所以先停在这里。")
-            log("      怎么办：① 等 NapCat 出新版（下次刷新会自动再试一遍，不用你操心）")
-            log("              ② 或者把 QQ 退回旧版；③ 微信那一路不受影响，点刷新照样抓微信")
+            log("      注意：NapCat 已于 2026-11-12 宣告终止（仓库只剩一行 README：Ending），")
+            log("            所以「等它出新版」这条路已经没有了，再等也不会自动好。")
+            log("      现在能做的：① 把 QQ 退回它认识的版本（9.9.37-54276 或更早）")
+            log("                  ② 或换一个还在维护的客户端（社区接力的是 SnowCatQQ）")
+            log("                  ③ 微信那一路不受影响，点刷新照样抓微信")
             log("      非要试一次：config.json 里 qq.ignore_compat 改成 true。")
             # 微信那一路是另跑的一段，可能刚抓到新东西。别因为 QQ 挂了就把它扔掉。
             if other_side_fresh():

@@ -533,7 +533,8 @@ def doctor() -> dict:
             cp = qq_compat.check(nd)
             if cp["ok"] is False:
                 add("QQ 版本", False,
-                    cp["reason"] + "　→ 等 NapCat 更新，或把 QQ 退回它认识的版本", "fail")
+                    cp["reason"] + "　→ NapCat 已于 11-12 停止更新，等不到了；"
+                    "要么把 QQ 退回它认识的版本，要么换客户端", "fail")
             elif cp["ok"] is True:
                 add("QQ 版本", True, f"{qv}　（NapCat 的偏移表里有这个 build）")
             else:

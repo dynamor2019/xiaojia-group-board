@@ -89,6 +89,13 @@ def latest(timeout: int = 30) -> dict:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = json.loads(r.read())
     except urllib.error.HTTPError as e:
+        if e.code == 404:
+            # 2026-11-12：NapCatQQ 官方仓库把代码和 release 一起撤了，
+            # 只剩一行 README「## Ending 到这里告一段落」。
+            # 这不是网络问题，是项目终止 —— 反复重试没有意义，说清楚就行。
+            raise NapCatError(
+                "NapCat 上游已经终止（2026-11-12 仓库只剩一行 README：Ending）。"
+                "不会再有新版，等是等不到的。") from e
         raise NapCatError(f"查 NapCat 最新版失败：HTTP {e.code}") from e
     except Exception as e:                                  # noqa: BLE001
         raise NapCatError(f"查 NapCat 最新版失败：{e}") from e
@@ -218,14 +225,25 @@ def heal(qq: str, napcat_dir: Path | None = None, say=None, force: bool = False)
     nd = Path(napcat_dir) if napcat_dir else Path(settings_napcat())
     out = {"ok": False, "tag": "", "qq": qq, "wrote": 0, "msg": ""}
 
+    st = _load_state()
+    # 上游若已宣告终止，就别每次刷新都去敲一扇已经关掉的门 ——
+    # 记住结论，一个月内直接用上次的话回答。
+    ended = float(st.get("ended_at") or 0)
+    if ended and time.time() - ended < 30 * 86400 and not force:
+        out["msg"] = ("NapCat 上游已经终止（2026-11-12 仓库只剩一行 README：Ending）。"
+                      "不会再有新版，等是等不到的。")
+        return out
+
     try:
         info = latest()
     except NapCatError as e:
         out["msg"] = str(e)
+        if "终止" in str(e):
+            st["ended_at"] = time.time()
+            _save_state(st)
         return out
     out["tag"] = info["tag"]
 
-    st = _load_state()
     cached = (st.get("tables") or {}).get(info["tag"]) or []
     same_tag_fresh = (st.get("tag") == info["tag"]
                       and time.time() - float(st.get("at") or 0) < 24 * 3600)

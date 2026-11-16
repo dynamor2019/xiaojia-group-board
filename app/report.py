@@ -2121,14 +2121,16 @@ def build(today: date, days: int = 30, sources=None,
     # QQ 那一路停着，最常见的两个原因是：① QQ 版本比 NapCat 支持的新；② 抓的时候
     # 你开着 QQ。前者刷一百次也没用 —— 页面必须自己把话说出来，否则用户只会
     # 一遍遍点「刷新数据」，然后把「这破看板又不更新」记在心里。
+    # 2026-11-16 补充：NapCat 已于 11-12 宣告 Ending（仓库只剩一行 README），
+    # 所以这里不能再承诺"等更新后会自动恢复" —— 那是一句永远不会兑现的话。
     why_qq = ""
     if any("QQ" in p for p in stale_parts):
         try:
             import qq_compat
             _cp = qq_compat.check()
             if _cp.get("ok") is False and _cp.get("newest"):
-                why_qq = (f"QQ 已经是 {_cp['qq']}，NapCat 还只认到 {_cp['newest']}"
-                          " —— 现在刷一百次也抓不到，等 NapCat 更新后会自动恢复")
+                why_qq = (f"QQ 已经是 {_cp['qq']}，NapCat 只认到 {_cp['newest']}"
+                          "；而 NapCat 已于 11-12 停止更新 —— 刷多少次也不会自己好")
         except Exception:
             pass
     stalebar = ""

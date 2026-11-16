@@ -137,7 +137,8 @@ def check(napcat_dir: Path | None = None) -> dict:
         # 说"高一个版本"更准 —— 9.9.36 → 9.9.37 就是一次大版本跳。
         out["reason"] = (
             f"你的 QQ 是 {qv}，NapCat 这张偏移表只认到 {newest}。"
-            "QQ 自己热更新上去了，NapCat 还没跟上 —— 不是你装坏了。")
+            "QQ 自己热更新上去了，NapCat 没跟上；而且它 2026-11-12 已停止更新，"
+            "不会再有跟上的那一天 —— 不是你装坏了。")
     else:
         out["reason"] = (
             f"你的 QQ 是 {qv}，NapCat 这张偏移表里没有它"
