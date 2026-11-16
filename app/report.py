@@ -1225,6 +1225,12 @@ let done = new Set(%%DONE%% || []);
 let muted = new Map();
 (%%MUTED%% || []).forEach(m => muted.set(m.src + '|' + m.gid, m));
 
+/* 群抽屉的展开状态。<details open> 是模板里算出来的，而「标记完成」会全量重画列表
+   （innerHTML 重建），算出来的结果跟眼前的不一样 —— 于是点一下完成，用户正看着的
+   那个群就塌了，还得再点开一次。这里按「源|群号」记住用户手动开/关过的群，
+   重画时以它为准。只记手动操作，不记自动展开：否则搜索一次就把全部群钉成常开。 */
+let openMem = new Map();
+
 /* 服务在跑的时候，data/board_state.json 就是唯一真相，不再合并浏览器里的旧标记
    —— 否则「重置已完成」清完，本机残留的 id 又会被合回来，标过的条目反而一直显示成划掉。 */
 if (!SERVED) {
@@ -1336,10 +1342,13 @@ function cardHTML(r) {
 function groupHTML(g, rs, qs) {
   const last = rs.reduce((m, r) => r.t > m ? r.t : m, '');
   const src = rs[0].src || 'QQ', gid = rs[0].gid || '';
+  const k = src + '|' + gid;
   // 「隐藏已完成」不再参与这里的判断 —— 它现在默认就是勾上的，
   // 算进来的话每张卡都会默认展开，页面长得没法看。
   // 反过来说：用户主动取消勾选（要看已完成的），就顺手展开，别再让他一个个点开找。
-  const open = (qs.length || onlyTodo.checked || gsel.value || !hideDone.checked) ? ' open' : '';
+  // 后一条是「筛选条件让人必须看见」的情形，优先于手动记忆；默认浏览状态下则听用户的。
+  const must = !!(qs.length || onlyTodo.checked || gsel.value || !hideDone.checked);
+  const open = (must || openMem.get(k) === true) ? ' open' : '';
   const body = rs.map(r => {
     const main = r.x || r.c || '';
     const extra = (r.x && r.c)
@@ -1353,7 +1362,7 @@ function groupHTML(g, rs, qs) {
         btnHTML(r.i) + '</div>' +
       '<div class="msg-x">' + hl(main, qs) + '</div>' + extra + '</div>';
   }).join('');
-  return '<details class="grp"' + open + '><summary>' +
+  return '<details class="grp" data-k="' + esc(k) + '"' + open + '><summary>' +
     '<span class="gname">' + esc(g) + '</span>' +
     '<span class="gmeta">' + rs.length + ' 条 · 最新 ' + last.slice(0, 10) + '</span>' +
     '<button class="btn-mute" title="取消关注：以后不再扫描这个群" ' +
@@ -1362,7 +1371,9 @@ function groupHTML(g, rs, qs) {
 }
 
 function ghostHTML(s) {
-  return '<details class="grp ghost"><summary>' +
+  const k = (s.src || 'QQ') + '|' + (s.gid || '');
+  return '<details class="grp ghost" data-k="' + esc(k) + '"' +
+    (openMem.get(k) === true ? ' open' : '') + '><summary>' +
     '<span class="gname">' + esc(s.g) + '</span>' +
     '<span class="gmeta">' + s.n + ' 条已完成 · 已收起</span>' +
     '</summary><div class="ghost-body">' +
@@ -1449,6 +1460,15 @@ function render() {
   document.getElementById('stDone').title = '点一下：显示 / 收起已完成的条目' +
     (stale ? '（其中 ' + stale + ' 条已过期或超出近 ' + CUR_DAYS + ' 天，看板上本来就不显示）' : '');
 }
+
+/* 手动开/关过哪个群，记下来。toggle 不冒泡，所以走捕获阶段 —— 捕获是从上往下走，
+   不冒泡的事件同样能收到。 */
+document.addEventListener('toggle', e => {
+  const d = e.target;
+  if (!d || d.tagName !== 'DETAILS' || !d.classList.contains('grp')) return;
+  const k = d.dataset.k;
+  if (k) openMem.set(k, !!d.open);
+}, true);
 
 document.addEventListener('click', e => {
   const mb = e.target.closest('.btn-mute');
