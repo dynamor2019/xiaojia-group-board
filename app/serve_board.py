@@ -508,12 +508,23 @@ def doctor() -> dict:
 
     if settings.get("qq", "enabled", False):
         nd = settings.napcat_dir()
-        ok = nd.exists() and (nd / "NapCatWinBootMain.exe").exists()
-        if ok:
-            add("NapCat", True, str(nd))
+        sc = settings.snowcat_dir()
+        # 两条注入通道，二选一。配了 SnowCat 就完全不走 NapCat 那一套（目录、偏移表、
+        # 自动升级都不参与），体检自然也不该再去查它们 —— 否则用户看到的是一个
+        # 早就跟他无关的红叉，还以为得去退 QQ 版本。
+        if sc:
+            add("注入通道", True, f"SnowCat（V8 注入）· {sc}")
+            has_qq = (sc / "QQ.exe").exists()
+            add("便携 QQ", has_qq, str(sc / "QQ.exe") if has_qq else
+                f"没找到 {sc / 'QQ.exe'} —— 把装好的 QQ 整个目录复制到这个位置，"
+                "再把 SnowCat 的 winmm.dll / napcat.mjs / snowcat-boot.js 放进去", "fail")
         else:
-            add("NapCat", False,
-                f"没找到 {nd}（只影响 QQ；微信不受影响）", fix="napcat")
+            ok = nd.exists() and (nd / "NapCatWinBootMain.exe").exists()
+            if ok:
+                add("NapCat", True, str(nd))
+            else:
+                add("NapCat", False,
+                    f"没找到 {nd}（只影响 QQ；微信不受影响）", fix="napcat")
         uin = str(settings.get("qq", "uin") or "").strip()
         add("QQ 号", bool(uin), uin or "未填 —— 不填就只能手动开 QQ 再抓")
         exe = settings.qq_exe()
@@ -522,9 +533,13 @@ def doctor() -> dict:
         # QQ 版本和 NapCat 的偏移表对不上 = 注入**必然**失败，不是"可能有点问题"，
         # 所以这项报 fail 而不是 warn。两个方向都要查：太旧（NapCat 要求 ≥ 9.9.27）
         # 和太新（QQ 热更新跑到了表前面，2026-11-11 就是这种）。
+        # 走 SnowCat 时这两个方向都不成立 —— 它不读 QQ 的二进制地址，只剩"版本号是多少"
+        # 这个事实值得写出来，用来对账。
         qv, qb = _qq_version()
         if not qv:
             add("QQ 版本", True, "没读到（QQ 不是 NT 版，或装在非常规路径）")
+        elif sc:
+            add("QQ 版本", True, f"{qv}　（走 SnowCat，不比对 NapCat 的偏移表）")
         elif qb and qb < 40768:
             add("QQ 版本", False,
                 f"{qv} 太旧 —— NapCat 要求 QQNT ≥ 9.9.27（构建 40768 以上），"

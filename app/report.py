@@ -1620,7 +1620,9 @@ function renderDoctor(d) {
 let napTimer = null;
 
 function addNapcatFix() {
-  const sp = conLine('   ⬇ 下载 NapCat（约 34 MB，解压到项目的 napcat 目录）', '#7dd3fc');
+  /* 上游 2026-11-12 终止后，这个按钮基本只会立刻失败。留着是因为：万一哪天有镜像，
+     或者别人接手的地址还能下，点一下仍然是条路；失败时会把"上游停了"说清楚。 */
+  const sp = conLine('   ⬇ 换成 SnowCat 才是正路；想试试还能不能下到旧包点这里（多半会失败）', '#7dd3fc');
   sp.style.cursor = 'pointer';
   sp.style.textDecoration = 'underline';
   sp.onclick = () => {
@@ -1655,8 +1657,10 @@ function pollNapcat() {
       }, 500);
     } else {
       conShow('NapCat 下载失败', false);
-      conLine('   也可以手动下：github.com/NapNeko/NapCatQQ/releases 里的 NapCat.Shell.zip，', '#7dd3fc');
-      conLine('   解压出来的文件直接放进上面提示的那个 napcat 目录。', '#7dd3fc');
+      /* 上游 2026-11-12 终止了，release 全撤 —— 别再指人去那个已经没有东西的页面。 */
+      conLine('   这个通道的上游已经停了，下不到新包。真要修 QQ 那一路，', '#7dd3fc');
+      conLine('   改成 SnowCat：在 config.json 里填上 qq.snowcat_dir（见 README 那一节）。', '#7dd3fc');
+      conLine('   微信不受影响，照常用。', '#7dd3fc');
     }
   }).catch(() => { if (napTimer) { clearInterval(napTimer); napTimer = null; } });
 }
@@ -2143,14 +2147,17 @@ def build(today: date, days: int = 30, sources=None,
     # 一遍遍点「刷新数据」，然后把「这破看板又不更新」记在心里。
     # 2026-11-16 补充：NapCat 已于 11-12 宣告 Ending（仓库只剩一行 README），
     # 所以这里不能再承诺"等更新后会自动恢复" —— 那是一句永远不会兑现的话。
+    # 同日再补：配了 SnowCat 就不提偏移表了。它挂的是 V8 编译器，QQ 版本多新都能注入，
+    # 再拿"NapCat 只认到哪个 build"去解释停滞，等于把人往"退 QQ 版本"这条死路上引。
     why_qq = ""
     if any("QQ" in p for p in stale_parts):
         try:
-            import qq_compat
-            _cp = qq_compat.check()
-            if _cp.get("ok") is False and _cp.get("newest"):
-                why_qq = (f"QQ 已经是 {_cp['qq']}，NapCat 只认到 {_cp['newest']}"
-                          "；而 NapCat 已于 11-12 停止更新 —— 刷多少次也不会自己好")
+            if not settings.snowcat_dir():
+                import qq_compat
+                _cp = qq_compat.check()
+                if _cp.get("ok") is False and _cp.get("newest"):
+                    why_qq = (f"QQ 已经是 {_cp['qq']}，NapCat 只认到 {_cp['newest']}"
+                              "；而 NapCat 已于 11-12 停止更新 —— 刷多少次也不会自己好")
         except Exception:
             pass
     stalebar = ""

@@ -44,6 +44,13 @@ def latest_release(timeout: int = 30) -> dict:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = json.loads(r.read())
     except urllib.error.HTTPError as e:
+        if e.code == 404:
+            # 2026-11-12：上游把代码和 release 一起撤了，仓库只剩一行 README（Ending）。
+            # 这里必须直说"项目停了"，而不是甩一个 HTTP 404 —— 后者看起来像网络问题，
+            # 用户会反复点下载。
+            raise NapCatError(
+                "NapCat 上游已终止（2026-11-12 仓库只剩一行 README：Ending），"
+                "没有可下载的版本了；把 qq.snowcat_dir 填上，改走 SnowCat 通道") from e
         raise NapCatError(f"查最新版本失败：HTTP {e.code}") from e
     except Exception as e:                              # noqa: BLE001
         raise NapCatError(f"查最新版本失败：{e}") from e
